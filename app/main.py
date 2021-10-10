@@ -49,7 +49,7 @@ st.write('''
 
 ## **Skills/Tools**
 
-<viz?
+<viz>
 
 ''')
 
