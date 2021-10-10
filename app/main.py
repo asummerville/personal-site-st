@@ -49,6 +49,8 @@ st.write('''
 
 ## **Skills/Tools**
 
+<viz?
+
 ''')
 
 #visualization that shows proficiency of each skill - maybe multiple for each type
@@ -100,6 +102,17 @@ DS 4001 (Machine Learning) [Portfolio]('https://rpubs.com/asummerville11')
 
 st.write('''
 
+
+## **Personal Projects**
+
+<halo>
+
+''')
+
+st.write('''
+
 ## **Personal Interests**
+
+I enjoy cycling, playing lacrosse, waterskiing/wakeboarding, landscape painting, and anything outdoors
 
 ''')
