@@ -10,7 +10,7 @@ st.write('''
 
 
 # st.sidebar.image("https://media-exp1.licdn.com/dms/image/C4E03AQFFmDulax2JMA/profile-displayphoto-shrink_400_400/0/1621271708730?e=1634774400&v=beta&t=v2Q8mRRFxuE0JXjDpkIzySxHh8egmN5SN2MQQ5bHegQ", use_column_width="auto")
-st.sidebar.image('img/headshot-circle.png', use_column_width="auto")
+st.sidebar.image('app/img/headshot-circle.png', use_column_width="auto")
 
 st.sidebar.write(''' 
 
@@ -43,7 +43,7 @@ I am a fourth year student at the University of Virginia studying Civil Engineer
 
 ''')
 
-st.image("img/interests.png", use_column_width="auto")
+st.image("app/img/interests.png", use_column_width="auto")
 
 st.write('''
 
@@ -85,7 +85,7 @@ st.write('''
 
 ''')
 
-st.image("img/poster.png", width=800)
+st.image("app/img/poster.png", width=800)
 
 
 st.write('''
