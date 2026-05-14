@@ -1,5 +1,6 @@
-streamlit
+streamlit>=1.36
 pandas
 fredapi
 plotly
 python-dotenv
+python-dateutil
