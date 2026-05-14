@@ -40,7 +40,7 @@ Every page follows this structure:
 
 ---
 
-### F1 — Trend: Single Series › Linear
+### F1 — Trend: Single Series › Linear ✓ *implemented*
 
 **Purpose:** View the raw time-series values of one FRED series as a simple line chart to understand the historical trend.
 
@@ -68,7 +68,7 @@ Every page follows this structure:
 
 ---
 
-### F2 — Trend: Single Series › Value + Annual % Change
+### F2 — Trend: Single Series › Value + Annual % Change ✓ *implemented*
 
 **Purpose:** Show both the raw value and its year-over-year percent change on dual axes, revealing whether costs are accelerating or decelerating.
 
@@ -102,7 +102,7 @@ Every page follows this structure:
 
 ---
 
-### F3 — Trend: Single Series › Time Blocks
+### F3 — Trend: Single Series › Time Blocks ✓ *implemented*
 
 **Purpose:** At-a-glance table showing how much a series has changed over standardized backward-looking windows — useful for bid preparation and cost basis decisions.
 
@@ -142,7 +142,7 @@ Every page follows this structure:
 
 ---
 
-### F4 — Trend: Multi-Series › Normalized
+### F4 — Trend: Multi-Series › Normalized ✓ *implemented*
 
 **Purpose:** Compare multiple cost series on one chart by normalizing all to a common starting index value, eliminating unit differences and enabling relative performance comparison.
 
@@ -175,7 +175,7 @@ Every page follows this structure:
 
 ---
 
-### F5 — Trend: Multi-Series › Mixed Axis
+### F5 — Trend: Multi-Series › Mixed Axis ✓ *implemented*
 
 **Purpose:** Support charts combining standard index series with diffusion or baseline-50 series (which cannot be meaningfully rebased) using dual axes.
 
@@ -206,7 +206,7 @@ Every page follows this structure:
 
 ---
 
-### F6 — Analyze: Change Calculator
+### F6 — Analyze: Change Calculator ✓ *implemented*
 
 **Purpose:** Compute the total cumulative percent change and compound annual growth rate (CAGR) for any series between a user-specified past date and today.
 
@@ -235,7 +235,7 @@ Every page follows this structure:
 - `years = (end_date − start_date).days / 365.25`
 - `CAGR = (end_val / start_val)^(1 / years) − 1`
 - `series_type = "diffusion"`: absolute point change only; suppress CAGR.
-- `series_type = "rate"` (e.g., CPALTT01USM661S): compounded product `Π(1 + monthly_rate)` over the period.
+- `series_type = "rate"` (e.g., CPALTT01USM661S): show mean rate over the period and start→end point change (pp). **Do not compound** — these series store annual-percentage values (~3.2 = 3.2%), not monthly multipliers.
 
 **UX Notes**
 - If exact date has no data: snap to nearest prior point and show notice "No data on [date] — using [snapped date]."
@@ -244,7 +244,7 @@ Every page follows this structure:
 
 ---
 
-### F7 — Analyze: Custom Index Builder
+### F7 — Analyze: Custom Index Builder ✓ *implemented*
 
 **Purpose:** Construct a weighted composite cost index from multiple FRED series, reflecting the specific cost structure of a project type (e.g., heavy civil vs. building construction).
 
@@ -266,7 +266,7 @@ Every page follows this structure:
 **Transforms**
 1. Normalize each series to base date: `norm_i(t) = (v_i(t) / v_i(base_date)) × 100`
 2. Composite: `composite(t) = Σ(weight_i × norm_i(t)) / Σ(weight_i)`
-3. If mixed frequencies: resample all series to the lowest common frequency (period-end values) before weighting.
+3. Mixed frequencies: resample all series to **month-end** (last observation in the month) before weighting. This is the implemented strategy — not "lowest common frequency."
 
 **UX Notes**
 - Allow weight editing freely during construction but disable Save/Apply until weights sum to 100.

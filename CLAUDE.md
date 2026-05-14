@@ -58,17 +58,38 @@ Add an entry to `AVAILABLE_SERIES` in `fred_app/store.py`. Required fields: `ser
 
 ### Series type → behavior table
 
-| `series_type` | YoY transform | Time-block default | Multi-axis default |
-|---|---|---|---|
-| `index` | applied | % Change | Primary axis (rebased) |
-| `count` | applied | % Change | Secondary axis (raw) |
-| `rate` | skipped (raw view) | Point Change | Secondary axis (raw) |
-| `diffusion` | skipped | Point Change | Secondary axis (raw, baseline-50 line shown) |
-| `currency` | skipped | % Change | Secondary axis (raw) |
+| `series_type` | YoY transform | Time-block default | Multi-axis default | Change Calculator | Custom Index Builder |
+|---|---|---|---|---|---|
+| `index` | applied | % Change | Primary axis (rebased) | Total % change + CAGR | Included (normalized) |
+| `count` | applied | % Change | Secondary axis (raw) | Total % change + CAGR | Included (normalized) |
+| `rate` | skipped (raw view) | Point Change | Secondary axis (raw) | Mean rate + point change (pp); CAGR suppressed | **Excluded** |
+| `diffusion` | skipped | Point Change | Secondary axis (raw, baseline-50 line shown) | Point change only; CAGR suppressed | **Excluded** |
+| `currency` | skipped | % Change | Secondary axis (raw) | Total % change + CAGR | Included (normalized) |
+
+**Rate series note (Change Calculator):** FRED rate series (e.g., CPALTT01USM661S) store already-expressed annual percent values (~3.2 = 3.2% YoY). Compounding them as monthly multipliers is wrong. The calculator shows mean rate over the period and start→end point change in percentage points instead.
 
 ### Streamlit Cloud deployment
 
 Both apps are deployed via Streamlit Cloud pointing at this repo. The `fred_app/app.py` entry point and every page file under `fred_app/pages/` use `sys.path.insert` to add the repo root so that `from fred_app.xxx import ...` resolves regardless of Streamlit's working directory.
+
+### Session state contracts (cross-page data)
+
+| Key | Written by | Read by | Shape |
+|---|---|---|---|
+| `custom_indices` | F7 Custom Index Builder | F8/F9 Project Escalation | `dict[name, {name, weights: dict[sid, float], base_date: str, series_ids: list[str]}]` |
+| `date_start` / `date_end` | `render_global_sidebar()` | all pages | `date` |
+
+### Implemented pages (as of current sprint)
+
+| Feature | File | Status |
+|---|---|---|
+| F1–F3 | `pages/trend_single.py` | Done |
+| F4–F5 | `pages/trend_multi.py` | Done |
+| F6 | `pages/change_calculator.py` | Done |
+| F7 | `pages/custom_index_builder.py` | Done |
+| F8–F9 | `pages/project_escalation.py` (planned) | Next |
+| F10 | `pages/currency_normalization.py` (planned) | Backlog |
+| F11 | — | Deferred to v2 |
 
 ## Reference Documents
 
