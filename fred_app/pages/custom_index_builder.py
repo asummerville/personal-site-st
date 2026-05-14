@@ -262,7 +262,7 @@ fig.add_trace(
         y=composite_df["value"],
         name="Composite",
         mode="lines",
-        line=dict(width=3, color="#111"),
+        line=dict(width=3, color="#ff4b4b"),
     )
 )
 

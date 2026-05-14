@@ -390,7 +390,7 @@ with tab_custom:
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=seg["date"], y=seg["value"], mode="lines",
-                line=dict(width=2, color="#111"), name=chosen_name,
+                line=dict(width=2.5, color="#ff4b4b"), name=chosen_name,
             ))
             base_ts = pd.Timestamp(comp_base_row["date"]).isoformat()
             fig.add_shape(
