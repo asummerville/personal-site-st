@@ -40,6 +40,14 @@ PAGES = {
             url_path="custom-index-builder",
         ),
     ],
+    "Escalate": [
+        st.Page(
+            "pages/project_escalation.py",
+            title="Project Escalation",
+            icon="🚀",
+            url_path="project-escalation",
+        ),
+    ],
 }
 
 nav = st.navigation(PAGES)
