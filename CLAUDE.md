@@ -36,7 +36,7 @@ This repo contains two independent Streamlit apps:
 
 ### Adding a new FRED series
 
-Add an entry to `AVAILABLE_SERIES` in `fred_app/store.py` — that's the only change needed for it to appear in the sidebar multiselect.
+Add an entry to `AVAILABLE_SERIES` in `fred_app/store.py` — that's the only change needed for it to appear in the sidebar. Assign a `category` to control which sidebar expander it lands in; `CATEGORIES` is derived automatically from the entries. Current categories: Cost Indices, Currency, Equipment, Labor, Materials, Spending.
 
 ### Streamlit Cloud deployment
 
