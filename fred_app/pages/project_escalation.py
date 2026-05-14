@@ -73,42 +73,46 @@ if "esc_base_date" not in st.session_state:
     st.session_state["esc_base_date"] = date.today() - relativedelta(years=5)
 
 
-def render_project_inputs(prefix: str) -> tuple[str, date, pd.DataFrame]:
-    """Render project name, base date, and editable cost breakdown. Shared by both tabs."""
-    c1, c2 = st.columns([2, 1])
-    name = c1.text_input("Project name", key="esc_project_name")
-    base_date = c2.date_input(
-        "Base cost date",
-        key="esc_base_date",
-        max_value=date.today(),
-        help="The date the original costs were captured (e.g., when the bid was prepared).",
-    )
+# ── Project inputs (rendered once, shared by both tabs) ───────────────────────
 
-    st.markdown("**Cost breakdown**")
-    edited = st.data_editor(
-        st.session_state["project"],
-        use_container_width=True,
-        num_rows="dynamic",
-        column_config={
-            "Line Item": st.column_config.TextColumn("Line Item", required=True),
-            "Cost ($)": st.column_config.NumberColumn(
-                "Cost ($)", min_value=0.0, step=1000.0, format="$%.2f"
-            ),
-            "Cost Type": st.column_config.SelectboxColumn(
-                "Cost Type", options=COST_TYPES, required=True, default="Other"
-            ),
-        },
-        key=f"{prefix}_editor",
-    )
-    # Sync edits back so the other tab sees them
-    st.session_state["project"] = edited
+st.markdown("### Project")
+c1, c2 = st.columns([2, 1])
+project_name = c1.text_input("Project name", key="esc_project_name")
+base_date = c2.date_input(
+    "Base cost date",
+    key="esc_base_date",
+    max_value=date.today(),
+    help="The date the original costs were captured (e.g., when the bid was prepared).",
+)
 
-    reset_col, _ = st.columns([1, 5])
-    if reset_col.button("Reset to sample", key=f"{prefix}_reset"):
-        st.session_state["project"] = SAMPLE_PROJECT.copy()
-        st.rerun()
+st.markdown("**Cost breakdown**")
+project_df = st.data_editor(
+    st.session_state["project"],
+    use_container_width=True,
+    num_rows="dynamic",
+    column_config={
+        "Line Item": st.column_config.TextColumn("Line Item", required=True),
+        "Cost ($)": st.column_config.NumberColumn(
+            "Cost ($)", min_value=0.0, step=1000.0, format="$%.2f"
+        ),
+        "Cost Type": st.column_config.SelectboxColumn(
+            "Cost Type", options=COST_TYPES, required=True, default="Other"
+        ),
+    },
+    key="project_editor",
+)
+st.session_state["project"] = project_df
 
-    return name, base_date, edited
+reset_col, _ = st.columns([1, 5])
+if reset_col.button("Reset to sample"):
+    st.session_state["project"] = SAMPLE_PROJECT.copy()
+    st.rerun()
+
+if project_df.empty or project_df["Cost ($)"].fillna(0).sum() == 0:
+    st.info("Add at least one line item with a cost to see escalation results.")
+    st.stop()
+
+st.divider()
 
 
 def render_factor_callout(
@@ -213,13 +217,6 @@ tab_single, tab_custom = st.tabs(["Single Index", "Custom Index"])
 # ============ F8 — Single Index ============
 
 with tab_single:
-    st.markdown("### Project")
-    name, base_date, project_df = render_project_inputs(prefix="f8")
-
-    if project_df.empty or project_df["Cost ($)"].fillna(0).sum() == 0:
-        st.info("Add at least one line item with a cost to see escalation results.")
-        st.stop()
-
     st.markdown("### Escalation Index")
     eligible_ids = list(ELIGIBLE_SERIES.keys())
     default_idx = eligible_ids.index("WPU801") if "WPU801" in eligible_ids else 0
@@ -312,7 +309,7 @@ with tab_single:
     st.download_button(
         "Download report (CSV)",
         data=csv,
-        file_name=f"escalation_{name.replace(' ', '_')}_{base_date}.csv",
+        file_name=f"escalation_{project_name.replace(' ', '_')}_{base_date}.csv",
         mime="text/csv",
         key="f8_dl",
     )
@@ -326,13 +323,6 @@ with tab_single:
 # ============ F9 — Custom Index ============
 
 with tab_custom:
-    st.markdown("### Project")
-    name_c, base_date_c, project_df_c = render_project_inputs(prefix="f9")
-
-    if project_df_c.empty or project_df_c["Cost ($)"].fillna(0).sum() == 0:
-        st.info("Add at least one line item with a cost to see escalation results.")
-        st.stop()
-
     saved_indices: dict = st.session_state.get("custom_indices", {})
 
     mode = st.radio(
@@ -342,7 +332,7 @@ with tab_custom:
         key="f9_mode",
     )
 
-    work = project_df_c.copy()
+    work = project_df.copy()
     work["Original Cost"] = work["Cost ($)"].fillna(0.0).astype(float)
 
     if mode == "Use Saved Custom Index":
@@ -368,10 +358,10 @@ with tab_custom:
             st.error("Could not rebuild the composite (component data unavailable).")
             st.stop()
 
-        comp_base_row = snap_to_date(composite_df, base_date_c)
+        comp_base_row = snap_to_date(composite_df, base_date)
         if comp_base_row is None:
             st.error(
-                f"Composite has no value on or before {base_date_c}. "
+                f"Composite has no value on or before {base_date}. "
                 f"Composite starts {composite_df['date'].min().date()}."
             )
             st.stop()
@@ -395,7 +385,7 @@ with tab_custom:
 
         # Reference chart for the composite
         st.markdown("**Composite index over the escalation period**")
-        seg = composite_df[composite_df["date"] >= pd.Timestamp(base_date_c)]
+        seg = composite_df[composite_df["date"] >= pd.Timestamp(base_date)]
         if not seg.empty:
             fig = go.Figure()
             fig.add_trace(go.Scatter(
@@ -448,11 +438,11 @@ with tab_custom:
                 type_factors[ctype] = float("nan")
                 type_notes.append(f"**{ctype}** ({AVAILABLE_SERIES[sid].title}): no data.")
                 continue
-            br = snap_to_date(df, base_date_c)
+            br = snap_to_date(df, base_date)
             if br is None:
                 type_factors[ctype] = float("nan")
                 type_notes.append(
-                    f"**{ctype}** ({AVAILABLE_SERIES[sid].title}): no data at or before {base_date_c}."
+                    f"**{ctype}** ({AVAILABLE_SERIES[sid].title}): no data at or before {base_date}."
                 )
                 continue
             type_factors[ctype] = float(df.iloc[-1]["value"]) / float(br["value"])
@@ -551,7 +541,7 @@ with tab_custom:
     cmp_store = load_series((compare_sid,), date(1900, 1, 1), date.today())
     cmp_df = cmp_store.get(compare_sid)
     if cmp_df is not None and not cmp_df.empty:
-        br = snap_to_date(cmp_df, base_date_c)
+        br = snap_to_date(cmp_df, base_date)
         if br is not None:
             single_factor = float(cmp_df.iloc[-1]["value"]) / float(br["value"])
             single_total = total_orig_c * single_factor
@@ -571,7 +561,7 @@ with tab_custom:
     st.download_button(
         "Download report (CSV)",
         data=csv_c,
-        file_name=f"escalation_custom_{name_c.replace(' ', '_')}_{base_date_c}.csv",
+        file_name=f"escalation_custom_{project_name.replace(' ', '_')}_{base_date}.csv",
         mime="text/csv",
         key="f9_dl",
     )
