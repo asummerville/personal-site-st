@@ -1,2 +1,5 @@
 streamlit
 pandas
+fredapi
+plotly
+python-dotenv
