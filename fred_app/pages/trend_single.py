@@ -68,7 +68,7 @@ with tab_linear:
     if len(df) < 3:
         st.warning("Too few data points in this range — try widening the date range.")
     fig = single_series_chart(df, meta.series_id, meta.units)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="f1_linear")
 
     summary = store.summary(series_id)
     cols = st.columns(len(summary))
@@ -94,7 +94,7 @@ with tab_yoy:
             f"({meta.units}), so a YoY transform is not applied. Showing raw values."
         )
         fig = single_series_chart(df, meta.series_id, meta.units)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="f2_raw_fallback")
     else:
         ctrl_col1, ctrl_col2 = st.columns([1, 2])
         smoothing = ctrl_col1.selectbox(
@@ -131,7 +131,7 @@ with tab_yoy:
                 show_value=show_value,
                 show_secondary=show_yoy,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="f2_dual_axis")
 
             mcol1, mcol2 = st.columns(2)
             with mcol1:
@@ -230,7 +230,7 @@ with tab_blocks:
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
     st.caption("Reference sparkline (full available history)")
-    st.plotly_chart(sparkline(wide_df, meta.series_id), use_container_width=True)
+    st.plotly_chart(sparkline(wide_df, meta.series_id), use_container_width=True, key="f3_sparkline")
 
     st.download_button(
         "Download CSV",

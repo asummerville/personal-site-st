@@ -118,7 +118,7 @@ with tab_norm:
         y_label=f"Index (Base {base_date} = {base_value:.0f})",
         base_date=base_date,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="f4_normalized")
 
     # Summary table
     rows = []
@@ -241,7 +241,7 @@ with tab_mixed:
             base_date=mixed_base_date,
             show_50_line=has_diffusion,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="f5_mixed_axis")
 
         # Mini legend table
         legend_rows = []
