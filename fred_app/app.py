@@ -8,11 +8,11 @@ import plotly.graph_objects as go
 import pandas as pd
 
 from fred_app.client import FredClient
-from fred_app.store import DataStore, AVAILABLE_SERIES
+from fred_app.store import DataStore, AVAILABLE_SERIES, CATEGORIES
 
 
-st.set_page_config(page_title="FRED Economic Data", layout="wide")
-st.title("FRED Economic Data Explorer")
+st.set_page_config(page_title="Construction Cost Explorer", layout="wide")
+st.title("Construction Cost Explorer")
 st.caption("Data sourced from the Federal Reserve Bank of St. Louis (FRED).")
 
 
@@ -20,13 +20,15 @@ st.caption("Data sourced from the Federal Reserve Bank of St. Louis (FRED).")
 
 st.sidebar.header("Controls")
 
-selected_ids = st.sidebar.multiselect(
-    "Series",
-    options=list(AVAILABLE_SERIES.keys()),
-    default=["UNRATE", "FEDFUNDS"],
-    format_func=lambda sid: f"{sid} — {AVAILABLE_SERIES[sid].title}",
-)
+selected_ids: list[str] = []
+for cat in CATEGORIES:
+    cat_series = {sid: m for sid, m in AVAILABLE_SERIES.items() if m.category == cat}
+    with st.sidebar.expander(cat, expanded=(cat == "Cost Indices")):
+        for sid, meta in cat_series.items():
+            if st.checkbox(meta.title, key=sid, value=(sid in ("WPU801", "WPUSI012011", "CES2000000003"))):
+                selected_ids.append(sid)
 
+st.sidebar.divider()
 col1, col2 = st.sidebar.columns(2)
 start_date = col1.date_input("Start", value=date(2000, 1, 1))
 end_date = col2.date_input("End", value=date.today())
@@ -47,21 +49,33 @@ def load_data(series_ids: tuple[str, ...], start: date, end: date) -> DataStore:
     client = FredClient()
     store = DataStore()
     for sid in series_ids:
-        df = client.fetch_series(sid, start=start, end=end)
-        store.add(sid, df, AVAILABLE_SERIES[sid])
+        try:
+            df = client.fetch_series(sid, start=start, end=end)
+            store.add(sid, df, AVAILABLE_SERIES[sid])
+        except Exception as e:
+            st.warning(f"Could not fetch {sid}: {e}")
     return store
 
 
 store = load_data(tuple(selected_ids), start_date, end_date)
 
 
-# ── Charts ────────────────────────────────────────────────────────────────────
+# ── Charts grouped by category ────────────────────────────────────────────────
+
+rendered_categories: set[str] = set()
 
 for sid in selected_ids:
     df = store.get(sid)
+    if df is None:
+        continue
+
     meta = store.meta[sid]
 
-    if df is None or df.empty:
+    if meta.category not in rendered_categories:
+        st.header(meta.category)
+        rendered_categories.add(meta.category)
+
+    if df.empty:
         st.warning(f"No data returned for {sid}.")
         continue
 
