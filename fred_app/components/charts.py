@@ -122,11 +122,16 @@ def multi_series_chart(
             )
         )
     if base_date is not None:
-        fig.add_vline(
-            x=int(pd.Timestamp(base_date).timestamp() * 1000),
+        ts = pd.Timestamp(base_date).isoformat()
+        fig.add_shape(
+            type="line",
+            x0=ts, x1=ts, y0=0, y1=1, yref="paper",
             line=dict(dash="dash", color="#95a5a6", width=1),
-            annotation_text="Base",
-            annotation_position="top",
+        )
+        fig.add_annotation(
+            x=ts, y=1, yref="paper",
+            text="Base", showarrow=False, yanchor="bottom",
+            font=dict(color="#95a5a6", size=11),
         )
     fig.update_layout(
         xaxis_title="Date",
@@ -188,11 +193,16 @@ def mixed_axis_chart(
         )
 
     if base_date is not None:
-        fig.add_vline(
-            x=int(pd.Timestamp(base_date).timestamp() * 1000),
+        ts = pd.Timestamp(base_date).isoformat()
+        fig.add_shape(
+            type="line",
+            x0=ts, x1=ts, y0=0, y1=1, yref="paper",
             line=dict(dash="dash", color="#95a5a6", width=1),
-            annotation_text="Base",
-            annotation_position="top",
+        )
+        fig.add_annotation(
+            x=ts, y=1, yref="paper",
+            text="Base", showarrow=False, yanchor="bottom",
+            font=dict(color="#95a5a6", size=11),
         )
 
     fig.update_layout(
