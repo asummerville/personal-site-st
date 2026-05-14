@@ -277,7 +277,7 @@ Every page follows this structure:
 
 ---
 
-### F8 — Escalate: Project Escalation › Single Index
+### F8 — Escalate: Project Escalation › Single Index ✓ *implemented*
 
 **Purpose:** Estimate the current replacement cost of a past project by escalating each line item using a single FRED cost index.
 
@@ -310,7 +310,7 @@ Every page follows this structure:
 
 ---
 
-### F9 — Escalate: Project Escalation › Custom Index
+### F9 — Escalate: Project Escalation › Custom Index ✓ *implemented*
 
 **Purpose:** Escalate a project cost breakdown using either a saved composite index (from F7) or per-cost-type index assignments, for more granular accuracy.
 
@@ -342,7 +342,7 @@ All F8 inputs, plus:
 
 ---
 
-### F10 — Escalate: Currency Normalization
+### F10 — Escalate: Currency Normalization ✓ *implemented*
 
 **Purpose:** Convert a project cost from a foreign currency to USD at the historical exchange rate so that escalation is applied in consistent USD terms.
 
@@ -362,7 +362,7 @@ All F8 inputs, plus:
 **Output**
 - Conversion result card: *"[X] [CCY] on [date] → $[Y] USD at rate [R]"*
 - FX rate chart: Plotly line chart, ±2-year window around the conversion date, vertical marker at conversion date.
-- If applied: "Updated Project Cost" card showing the USD-normalized cost that feeds into F8/F9.
+- If applied (target = USD): writes `st.session_state["currency_adjustment"]`. **Not yet auto-consumed by F8/F9** — user manually enters the USD amount there. Cross-page wiring is a future enhancement.
 - Workflow order callout: **Currency Normalization → Location Normalization → Escalation**.
 
 **Transforms**

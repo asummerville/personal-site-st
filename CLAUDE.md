@@ -77,9 +77,11 @@ Both apps are deployed via Streamlit Cloud pointing at this repo. The `fred_app/
 | Key | Written by | Read by | Shape |
 |---|---|---|---|
 | `custom_indices` | F7 Custom Index Builder | F8/F9 Project Escalation | `dict[name, {name, weights: dict[sid, float], base_date: str, series_ids: list[str]}]` |
+| `currency_adjustment` | F10 Currency Normalization | F8/F9 Project Escalation (future) | `{source_currency, source_amount, conversion_date: str, rate, usd_amount}` |
 | `date_start` / `date_end` | `render_global_sidebar()` | all pages | `date` |
+| `project` | F8/F9 Project Escalation | F8/F9 (shared across tabs) | `pd.DataFrame` with columns: Line Item, Cost ($), Cost Type |
 
-### Implemented pages (as of current sprint)
+### Implemented pages
 
 | Feature | File | Status |
 |---|---|---|
@@ -87,9 +89,32 @@ Both apps are deployed via Streamlit Cloud pointing at this repo. The `fred_app/
 | F4–F5 | `pages/trend_multi.py` | Done |
 | F6 | `pages/change_calculator.py` | Done |
 | F7 | `pages/custom_index_builder.py` | Done |
-| F8–F9 | `pages/project_escalation.py` (planned) | Next |
-| F10 | `pages/currency_normalization.py` (planned) | Backlog |
-| F11 | — | Deferred to v2 |
+| F8–F9 | `pages/project_escalation.py` | Done |
+| F10 | `pages/currency_normalization.py` | Done |
+| F11 | — | Deferred to v2 (needs location factor dataset) |
+
+**All F1–F10 are complete. F11 is the only remaining feature.**
+
+### Known Streamlit gotchas (learned in this project)
+
+- **Tabs share a single render pass** — Streamlit executes all `with tab_X:` blocks every run. Never use the same widget `key=` in more than one tab. Render shared widgets (e.g., project inputs) *above* `st.tabs()` and pass variables into each tab.
+- **Widget key + value conflict** — When a widget uses `key=`, initialize the session state key first (`if "key" not in st.session_state: st.session_state["key"] = default`), then use `key=` only — do not also pass `value=`/`index=`.
+- **Plotly chart key required** — Every `st.plotly_chart` call needs a unique `key=` argument (Streamlit 1.36+).
+- **`add_vline` crashes with `pd.Timestamp` axes in Plotly 6.x** — Use `add_shape(type="line", x0=ts, x1=ts, y0=0, y1=1, yref="paper")` + `add_annotation` instead.
+- **Dark mode** — Never use `color="#111"` or `color="#fff"` for chart lines. Use `#ff4b4b` (Streamlit accent) for bold/composite lines — visible in both themes.
+- **`applymap` removed in pandas 3.0** — Use `.map()` on Styler objects instead.
+
+### Currency series conventions (F10)
+
+`currency_normalization.py` defines a `CURRENCIES` dict with `convention` field:
+- `"usd_per"` → rate = USD per 1 foreign unit → `USD = foreign × rate` (EUR, GBP, AUD)
+- `"per_usd"` → rate = foreign per 1 USD → `USD = foreign / rate` (CAD, JPY, BRL)
+
+To add a new currency: add an entry to `CURRENCIES` in that file and add the FRED series to `AVAILABLE_SERIES` in `store.py` with `series_type="currency"`, `frequency_periods=252` (daily), `yoy_applicable=False`, and document the direction in `notes`.
+
+### Project Escalation (F8/F9)
+
+Project inputs (name, base date, cost breakdown) are rendered **above** `st.tabs()` to avoid `StreamlitDuplicateElementKey`. Both tabs read from the same `project_df`, `base_date`, `project_name` variables. Eligible escalators are `series_type ∈ {"index", "count"}` only — rate/diffusion/currency series are excluded.
 
 ## Reference Documents
 
