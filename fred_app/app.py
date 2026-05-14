@@ -26,6 +26,14 @@ PAGES = {
             url_path="trend-multi",
         ),
     ],
+    "Analyze": [
+        st.Page(
+            "pages/change_calculator.py",
+            title="Change Calculator",
+            icon="📐",
+            url_path="change-calculator",
+        ),
+    ],
 }
 
 nav = st.navigation(PAGES)
