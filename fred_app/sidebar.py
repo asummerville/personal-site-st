@@ -14,14 +14,15 @@ def render_global_sidebar() -> tuple[date, date]:
     today = date.today()
     default_start = today - relativedelta(years=10)
 
+    if "date_start" not in st.session_state:
+        st.session_state["date_start"] = default_start
+    if "date_end" not in st.session_state:
+        st.session_state["date_end"] = today
+
     st.sidebar.header("Global Filters")
     col1, col2 = st.sidebar.columns(2)
-    start_date = col1.date_input(
-        "Start", value=st.session_state.get("date_start", default_start), key="date_start"
-    )
-    end_date = col2.date_input(
-        "End", value=st.session_state.get("date_end", today), key="date_end"
-    )
+    start_date = col1.date_input("Start", key="date_start")
+    end_date = col2.date_input("End", key="date_end")
 
     if start_date >= end_date:
         st.sidebar.error("Start must be before end.")

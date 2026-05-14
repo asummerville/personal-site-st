@@ -225,7 +225,7 @@ with tab_blocks:
                 return "background-color: rgba(231, 76, 60, 0.25)"
             return ""
 
-        styled = styled.applymap(_color_cell, subset=[change_col])
+        styled = styled.map(_color_cell, subset=[change_col])
 
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
