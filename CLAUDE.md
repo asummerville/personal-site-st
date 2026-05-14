@@ -119,3 +119,8 @@ Project inputs (name, base date, cost breakdown) are rendered **above** `st.tabs
 ## Reference Documents
 
 - `ui-spec.md` — Full UI/UX spec for all 11 planned features (F1–F11). Source of truth for behavior, inputs, outputs, and transforms.
+- `docs/roadmap.md` — 4-sprint, 8-week plan: URL persistence → materials drill-down → forecasting → reporting + FX wiring.
+- `docs/feature-backlog.md` — Prioritized ideas beyond the 8-week window (effort S/M/L, portfolio/domain value 1–5).
+- `docs/data-sources.md` — Tier 1–5 free public data sources; FRED series IDs for Sprint 2 materials sub-indices.
+- `docs/database-schema.md` — Supabase schema + RLS policies + migration plan (design complete; migration deferred).
+- `docs/ux-vision.md` — Persona, 5 design principles, navigation evolution horizons, anti-patterns.
