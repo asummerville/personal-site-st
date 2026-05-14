@@ -123,7 +123,7 @@ def multi_series_chart(
         )
     if base_date is not None:
         fig.add_vline(
-            x=pd.Timestamp(base_date),
+            x=int(pd.Timestamp(base_date).timestamp() * 1000),
             line=dict(dash="dash", color="#95a5a6", width=1),
             annotation_text="Base",
             annotation_position="top",
@@ -189,7 +189,7 @@ def mixed_axis_chart(
 
     if base_date is not None:
         fig.add_vline(
-            x=pd.Timestamp(base_date),
+            x=int(pd.Timestamp(base_date).timestamp() * 1000),
             line=dict(dash="dash", color="#95a5a6", width=1),
             annotation_text="Base",
             annotation_position="top",

@@ -66,8 +66,8 @@ AVAILABLE_SERIES: dict[str, SeriesMeta] = {
         base_year=2001,
         frequency_periods=4,
     ),
-    "CES2000000001": SeriesMeta(
-        series_id="CES2000000001",
+    "USCONS": SeriesMeta(
+        series_id="USCONS",
         title="US Construction Employees (Total)",
         units="Thousands of Persons",
         frequency="Monthly",
@@ -84,8 +84,8 @@ AVAILABLE_SERIES: dict[str, SeriesMeta] = {
         series_type="count",
         frequency_periods=12,
     ),
-    "LNS14032230": SeriesMeta(
-        series_id="LNS14032230",
+    "LNU04032230": SeriesMeta(
+        series_id="LNU04032230",
         title="US Construction Unemployment Rate",
         units="Percent",
         frequency="Monthly",
