@@ -107,14 +107,13 @@ if input_start >= input_end:
 
 # ── Calculations ──────────────────────────────────────────────────────────────
 
-def _compounded_rate_change(df: pd.DataFrame, start: date, end: date) -> float | None:
-    """For rate-type series (e.g., monthly growth rates as %): compound them."""
-    mask = (df["date"] > pd.Timestamp(start)) & (df["date"] <= pd.Timestamp(end))
+def _mean_rate(df: pd.DataFrame, start: date, end: date) -> float | None:
+    """Mean of rate values between start and end (inclusive)."""
+    mask = (df["date"] >= pd.Timestamp(start)) & (df["date"] <= pd.Timestamp(end))
     rates = df.loc[mask, "value"].dropna()
     if rates.empty:
         return None
-    # FRED rate series are typically expressed as percent — divide by 100 to get decimal
-    return float((1.0 + rates / 100.0).prod() - 1.0)
+    return float(rates.mean())
 
 
 rows = []
@@ -167,12 +166,9 @@ for sid in selected_ids:
             }
         )
     elif meta.series_type == "rate":
-        # Compound the per-period rates
-        cumulative = _compounded_rate_change(df, s_date_actual, e_date_actual)
-        c = None
-        if cumulative is not None and years >= 1.0:
-            # Equivalent CAGR derived from the compounded total
-            c = (1.0 + cumulative) ** (1.0 / years) - 1.0
+        # Rate series store an already-expressed rate (e.g., 3.2 = 3.2% YoY or 3.2% unemployment).
+        # Compounding these as period multipliers is meaningless; show point change and mean instead.
+        mean_r = _mean_rate(df, s_date_actual, e_date_actual)
         rows.append(
             {
                 "_sid": sid,
@@ -181,9 +177,11 @@ for sid in selected_ids:
                 "Start Value": round(float(s["value"]), 4),
                 "End Date": e_date_actual.isoformat(),
                 "End Value": round(float(e["value"]), 4),
-                "Total % Change": cumulative,
+                "Total % Change": None,
+                "Point Change": round(float(e["value"] - s["value"]), 4),
+                "Mean Rate": round(mean_r, 4) if mean_r is not None else None,
                 "Years": round(years, 2),
-                "CAGR": c,
+                "CAGR": None,
                 "_skip": False,
             }
         )
@@ -226,6 +224,15 @@ for r in valid:
     pct = r.get("Total % Change")
     cagr_v = r.get("CAGR")
     point = r.get("Point Change")
+    mean_r = r.get("Mean Rate")
+    if pct is not None:
+        change_label = f"{pct * 100:.2f}%"
+    elif mean_r is not None:
+        change_label = f"Avg {mean_r:.2f}% (Δ{point:+.2f} pp)"
+    elif point is not None:
+        change_label = f"Δ {point:+.2f}"
+    else:
+        change_label = "—"
     display_rows.append(
         {
             "Series": r["Series"],
@@ -234,9 +241,7 @@ for r in valid:
             "End Date": r["End Date"],
             "End Value": r["End Value"],
             "Years": r["Years"],
-            "Total % Change": f"{pct * 100:.2f}%" if pct is not None else (
-                f"Δ {point:+.2f}" if point is not None else "—"
-            ),
+            "Total Change": change_label,
             "CAGR": f"{cagr_v * 100:.2f}%" if cagr_v is not None else "—",
         }
     )
@@ -276,12 +281,12 @@ if cagr_rows:
     st.markdown("### Average Annual Change (CAGR)")
     st.plotly_chart(fig, use_container_width=True, key="f6_cagr_bar")
 elif valid:
-    st.caption("CAGR not shown: less than 1 year between dates, or all series are diffusion-type.")
+    st.caption("CAGR not shown: less than 1 year between dates, or all series are diffusion/rate-type.")
 
 
 # ── Headline callout for the top series ───────────────────────────────────────
 
-# Pick the series with the largest absolute total % change (or point change for diffusion)
+# Pick the series with the largest absolute total % change (or point change for diffusion/rate)
 def _magnitude(r):
     if r.get("Total % Change") is not None:
         return abs(r["Total % Change"])
@@ -294,6 +299,7 @@ top = max(valid, key=_magnitude)
 top_pct = top.get("Total % Change")
 top_cagr = top.get("CAGR")
 top_years = top["Years"]
+top_mean_r = top.get("Mean Rate")
 direction = "increased" if (top_pct or 0) >= 0 else "decreased"
 if top_pct is not None and top_cagr is not None:
     st.success(
@@ -304,6 +310,12 @@ elif top_pct is not None:
     st.success(
         f"**{top['Series']}** has {direction} by **{abs(top_pct) * 100:.2f}%** over "
         f"**{top_years:.1f} years** (CAGR not meaningful for periods under 1 year)."
+    )
+elif top_mean_r is not None:
+    pc = top.get("Point Change", 0)
+    st.success(
+        f"**{top['Series']}** averaged **{top_mean_r:.2f}%** over **{top_years:.1f} years** "
+        f"(start: {top['Start Value']:.2f}%, end: {top['End Value']:.2f}%, Δ{pc:+.2f} pp)."
     )
 elif top.get("Point Change") is not None:
     pc = top["Point Change"]
