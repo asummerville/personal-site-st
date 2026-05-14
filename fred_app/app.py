@@ -33,6 +33,12 @@ PAGES = {
             icon="📐",
             url_path="change-calculator",
         ),
+        st.Page(
+            "pages/custom_index_builder.py",
+            title="Custom Index Builder",
+            icon="🧪",
+            url_path="custom-index-builder",
+        ),
     ],
 }
 
