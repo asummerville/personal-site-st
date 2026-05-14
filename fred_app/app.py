@@ -47,6 +47,12 @@ PAGES = {
             icon="🚀",
             url_path="project-escalation",
         ),
+        st.Page(
+            "pages/currency_normalization.py",
+            title="Currency Normalization",
+            icon="💱",
+            url_path="currency-normalization",
+        ),
     ],
 }
 
