@@ -14,7 +14,6 @@ Dry run (parse only, no Notion writes):
   python migrate.py --input Notebook.mht --dry-run
 """
 
-import argparse
 import email
 import sys
 import time
@@ -369,30 +368,43 @@ def migrate_file(path: Path, token: str, parent_id: str, section_name: str | Non
             print(f"    ERROR: {exc.response.status_code} — {exc.response.text[:300]}")
 
 
+# ── Configuration — edit these before running ─────────────────────────────────
+
+# Path to a single .mht file (flat import) or a folder of .mht files (one per
+# section — each filename becomes a section page in Notion).
+INPUT = "onenote_to_notion/exports/MyNotebook.mht"
+
+# Notion integration token — get one at notion.so/my-integrations
+NOTION_TOKEN = "ntn_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# ID of the Notion page to import under. Copy it from the page URL:
+# notion.so/My-Page-<THIS-32-CHAR-ID>
+PARENT_PAGE_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# True  → parse only, print page titles and block counts, no Notion writes
+# False → full migration
+DRY_RUN = True
+
+# ── Run ───────────────────────────────────────────────────────────────────────
+
 def main():
-    parser = argparse.ArgumentParser(description="Migrate OneNote .mht exports to Notion")
-    parser.add_argument("--input", required=True, help=".mht file or folder containing .mht files")
-    parser.add_argument("--token", help="Notion integration token (ntn_...)")
-    parser.add_argument("--parent-id", help="Notion page ID to import content under")
-    parser.add_argument("--dry-run", action="store_true", help="Parse only, no Notion writes")
-    args = parser.parse_args()
+    if not DRY_RUN and (not NOTION_TOKEN or not PARENT_PAGE_ID):
+        print("Set NOTION_TOKEN and PARENT_PAGE_ID before running a full migration.")
+        sys.exit(1)
 
-    if not args.dry_run and (not args.token or not args.parent_id):
-        parser.error("--token and --parent-id are required unless --dry-run is set")
-
-    input_path = Path(args.input)
+    input_path = Path(INPUT)
 
     if input_path.is_file():
-        migrate_file(input_path, args.token, args.parent_id, dry_run=args.dry_run)
+        migrate_file(input_path, NOTION_TOKEN, PARENT_PAGE_ID, dry_run=DRY_RUN)
     elif input_path.is_dir():
         files = sorted(input_path.glob("*.mht"))
         if not files:
-            print("No .mht files found in directory.")
+            print(f"No .mht files found in: {input_path}")
             sys.exit(1)
         print(f"Found {len(files)} section file(s)")
         for f in files:
             section_name = f.stem.replace("_", " ").replace("-", " ")
-            migrate_file(f, args.token, args.parent_id, section_name=section_name, dry_run=args.dry_run)
+            migrate_file(f, NOTION_TOKEN, PARENT_PAGE_ID, section_name=section_name, dry_run=DRY_RUN)
     else:
         print(f"Input not found: {input_path}")
         sys.exit(1)
