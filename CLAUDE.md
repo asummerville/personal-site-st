@@ -2,6 +2,42 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## `onenote_to_notion/` — OneNote → Notion Migration
+
+Standalone script that parses OneNote `.mht` exports and pushes content to Notion via the API.
+
+### Usage
+
+1. Export from OneNote desktop: **File → Export → Notebook → Single File Web Page (`.mht`)**
+   - Exports the whole notebook as one `.mht` (flat: all pages under one Notion parent)
+   - OR export section-by-section to a folder (each filename → a Notion section sub-page)
+
+2. Edit the config block at the top of `onenote_to_notion/migrate.py`:
+   ```python
+   INPUT          = "path/to/MyNotebook.mht"   # file or folder of .mht files
+   NOTION_TOKEN   = "ntn_..."                  # from notion.so/my-integrations
+   PARENT_PAGE_ID = "32-char-page-id"          # from the target Notion page URL
+   DRY_RUN        = True                       # flip to False for the real run
+   ```
+
+3. Run:
+   ```bash
+   pip install -r onenote_to_notion/requirements.txt
+   python onenote_to_notion/migrate.py
+   ```
+
+### What it handles
+- Bullet lists (including OneNote's non-standard sibling-`<ul>` nesting)
+- Numbered lists
+- Paragraphs and bold section labels (→ `heading_3`)
+- Nested bullets preserved as Notion children blocks
+- Notion API rate limiting and 100-block-per-request batching
+- Image-only pages (screenshots) produce empty Notion pages gracefully
+
+### Known limitations
+- Section names are not embedded in notebook-level `.mht` exports — use per-section exports if hierarchy matters
+- Images/screenshots are not migrated (text-only)
+
 ## Running the Apps
 
 ```bash
