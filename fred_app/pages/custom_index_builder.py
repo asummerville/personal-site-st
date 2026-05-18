@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from fred_app.components.charts import color_for_series
+import fred_app.db as db
 from fred_app.loader import load_series
 from fred_app.sidebar import render_category_legend, render_global_sidebar
 from fred_app.store import AVAILABLE_SERIES, CATEGORIES, series_by_category
@@ -29,6 +30,7 @@ st.caption(
 )
 
 global_start, global_end = render_global_sidebar()
+_db_ready = db.ensure_schema() if db.is_available() else False
 
 
 # ── Sidebar: series selection ─────────────────────────────────────────────────
@@ -335,10 +337,28 @@ c3.metric(
 
 st.divider()
 st.markdown("### Save This Index")
-st.caption("Saved indices persist in this session and will be available in Project Escalation pages.")
+
+db_badge = "☁ DB connected" if _db_ready else "💾 Session only (no DB)"
+st.caption(
+    f"Saved indices are available in Project Escalation. {db_badge}. "
+    + ("Add `CONNECTION_STRING` to persist across sessions." if not _db_ready else "")
+)
 
 if "custom_indices" not in st.session_state:
     st.session_state["custom_indices"] = {}
+
+# On first load, pull DB indices into session_state so previously saved work shows up.
+if _db_ready and "cib_db_loaded" not in st.session_state:
+    for row in db.list_custom_indices():
+        if row["name"] not in st.session_state["custom_indices"]:
+            st.session_state["custom_indices"][row["name"]] = {
+                "name": row["name"],
+                "weights": row["weights"],
+                "base_date": row["base_date"],
+                "series_ids": row["series_ids"],
+                "db_id": row["db_id"],
+            }
+    st.session_state["cib_db_loaded"] = True
 
 save_col, name_col = st.columns([1, 3])
 default_name = st.session_state.get("cib_last_name", "My Composite")
@@ -346,14 +366,28 @@ index_name = name_col.text_input("Index name", value=default_name, key="cib_name
 can_save = abs(total_weight - 100.0) < 0.01
 
 if save_col.button("Save Index", type="primary", disabled=not can_save, use_container_width=True):
-    st.session_state["custom_indices"][index_name] = {
+    entry = {
         "name": index_name,
         "weights": {sid: weights[sid] for sid in selected_ids if sid in normalized},
         "base_date": base_date.isoformat(),
         "series_ids": list(normalized.keys()),
     }
+    if _db_ready:
+        db_id = db.save_custom_index(
+            name=index_name,
+            base_date=base_date.isoformat(),
+            weights=entry["weights"],
+            series_ids=entry["series_ids"],
+        )
+        if db_id:
+            entry["db_id"] = db_id
+            st.success(f'Saved "{index_name}" to database.')
+        else:
+            st.warning(f'Saved "{index_name}" to session only (DB write failed).')
+    else:
+        st.success(f'Saved "{index_name}" to session.')
+    st.session_state["custom_indices"][index_name] = entry
     st.session_state["cib_last_name"] = index_name
-    st.success(f"Saved “{index_name}”.")
 
 if not can_save:
     st.caption("Save is disabled until weights sum to 100. Use 'Normalize to 100' above.")
@@ -361,16 +395,31 @@ if not can_save:
 if st.session_state["custom_indices"]:
     st.markdown("**Saved indices**")
     for name, cfg in list(st.session_state["custom_indices"].items()):
-        r1, r2, r3 = st.columns([3, 4, 1])
-        r1.markdown(f"**{name}**")
+        r1, r2, r3, r4 = st.columns([3, 4, 1, 1])
+        persisted = "☁" if cfg.get("db_id") else "💾"
+        r1.markdown(f"**{name}** {persisted}")
         weight_summary = ", ".join(
             f"{AVAILABLE_SERIES[s].title.split(':')[0][:18]} {w:.0f}%"
             for s, w in cfg["weights"].items()
+            if s in AVAILABLE_SERIES
         )
         r2.caption(f"Base {cfg['base_date']} · {weight_summary}")
-        if r3.button("✕", key=f"cib_del_{name}"):
+        if r3.button("✕", key=f"cib_del_{name}", help="Remove from session and DB"):
+            if _db_ready and cfg.get("db_id"):
+                db.delete_custom_index(cfg["db_id"])
             del st.session_state["custom_indices"][name]
             st.rerun()
+        if not cfg.get("db_id") and _db_ready:
+            if r4.button("☁", key=f"cib_push_{name}", help="Persist to database"):
+                db_id = db.save_custom_index(
+                    name=cfg["name"],
+                    base_date=cfg["base_date"],
+                    weights=cfg["weights"],
+                    series_ids=cfg["series_ids"],
+                )
+                if db_id:
+                    st.session_state["custom_indices"][name]["db_id"] = db_id
+                    st.rerun()
 
 
 # ── Download composite ────────────────────────────────────────────────────────
