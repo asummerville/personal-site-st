@@ -77,7 +77,8 @@ if _db_ready:
             key="esc_load_proj_select",
         )
         if chosen_proj_name != "— select —":
-            if st.sidebar.button("Load", key="esc_load_proj_btn", use_container_width=True):
+            lb, db_btn = st.sidebar.columns(2)
+            if lb.button("Load", key="esc_load_proj_btn", use_container_width=True):
                 loaded = db.load_project(proj_options[chosen_proj_name])
                 if loaded:
                     st.session_state["esc_project_name"] = loaded["name"]
@@ -94,10 +95,9 @@ if _db_ready:
                     )
                     st.session_state["esc_loaded_db_id"] = proj_options[chosen_proj_name]
                     st.rerun()
-        if st.sidebar.button("Delete selected", key="esc_del_proj_btn", use_container_width=True):
-            if chosen_proj_name != "— select —":
+            if db_btn.button("Delete", key="esc_del_proj_btn", use_container_width=True):
                 db.delete_project(proj_options[chosen_proj_name])
-                if st.session_state.get("esc_loaded_db_id") == proj_options.get(chosen_proj_name):
+                if st.session_state.get("esc_loaded_db_id") == proj_options[chosen_proj_name]:
                     st.session_state.pop("esc_loaded_db_id", None)
                 st.rerun()
     else:
@@ -127,6 +127,8 @@ base_date = c2.date_input(
 )
 
 st.markdown("**Cost breakdown**")
+# Key includes the loaded DB id so a different project gets a fresh render.
+_editor_key = f"project_editor_{st.session_state.get('esc_loaded_db_id', 'new')}"
 project_df = st.data_editor(
     st.session_state["project"],
     use_container_width=True,
@@ -140,7 +142,7 @@ project_df = st.data_editor(
             "Cost Type", options=COST_TYPES, required=True, default="Other"
         ),
     },
-    key="project_editor",
+    key=_editor_key,
 )
 st.session_state["project"] = project_df
 
@@ -151,7 +153,9 @@ if action_c1.button("Reset to sample"):
     st.rerun()
 
 if _db_ready:
-    if action_c2.button("☁ Save to DB", help="Persist this project to Supabase"):
+    _is_db_project = "esc_loaded_db_id" in st.session_state
+    _save_label = "☁ Update in DB" if _is_db_project else "☁ Save to DB"
+    if action_c2.button(_save_label, help="Persist this project to Supabase"):
         valid_rows = project_df.dropna(subset=["Line Item", "Cost ($)"])
         line_items = [
             {
@@ -168,7 +172,8 @@ if _db_ready:
         )
         if db_id:
             st.session_state["esc_loaded_db_id"] = db_id
-            st.success(f'Project "{project_name}" saved to database.')
+            verb = "updated" if _is_db_project else "saved"
+            st.success(f'Project "{project_name}" {verb} in database.')
         else:
             st.error("DB save failed — check connection.")
 
