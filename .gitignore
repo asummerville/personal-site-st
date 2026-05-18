@@ -4,3 +4,4 @@ __pycache__/
 .streamlit/secrets.toml
 data/
 venv/
+onenote_to_notion/

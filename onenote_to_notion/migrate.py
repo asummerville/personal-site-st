@@ -22,6 +22,11 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 NOTION_API = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 REQ_SLEEP = 0.4          # ~2.5 req/s, well under the 3/s limit
@@ -372,18 +377,18 @@ def migrate_file(path: Path, token: str, parent_id: str, section_name: str | Non
 
 # Path to a single .mht file (flat import) or a folder of .mht files (one per
 # section — each filename becomes a section page in Notion).
-INPUT = "onenote_to_notion/exports/MyNotebook.mht"
+INPUT = "data/PM Personal.mht"
 
 # Notion integration token — get one at notion.so/my-integrations
-NOTION_TOKEN = "ntn_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 
 # ID of the Notion page to import under. Copy it from the page URL:
 # notion.so/My-Page-<THIS-32-CHAR-ID>
-PARENT_PAGE_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+PARENT_PAGE_ID = "362d82c052018020b8cde21766fd3cf6"
 
 # True  → parse only, print page titles and block counts, no Notion writes
 # False → full migration
-DRY_RUN = True
+DRY_RUN = False
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 
