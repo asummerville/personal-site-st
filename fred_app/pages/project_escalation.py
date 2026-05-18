@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from fred_app.components.charts import color_for_series
+import fred_app.db as db
 from fred_app.loader import load_series
 from fred_app.sidebar import render_global_sidebar
 from fred_app.store import AVAILABLE_SERIES
@@ -53,6 +54,7 @@ st.caption(
 )
 
 render_global_sidebar()  # Date range isn't directly used here but keeps sidebar consistent.
+_db_ready = db.ensure_schema() if db.is_available() else False
 
 st.sidebar.divider()
 st.sidebar.header("Tips")
@@ -61,6 +63,45 @@ st.sidebar.caption(
     "Switch tabs to compare a single-index escalation against a cost-type-aware one — "
     "the project cost breakdown is shared between tabs."
 )
+
+# ── DB: load saved project from sidebar ──────────────────────────────────────
+if _db_ready:
+    st.sidebar.divider()
+    st.sidebar.header("Saved Projects")
+    saved_projs = db.list_projects()
+    if saved_projs:
+        proj_options = {p["name"]: p["db_id"] for p in saved_projs}
+        chosen_proj_name = st.sidebar.selectbox(
+            "Load a project",
+            options=["— select —"] + list(proj_options.keys()),
+            key="esc_load_proj_select",
+        )
+        if chosen_proj_name != "— select —":
+            if st.sidebar.button("Load", key="esc_load_proj_btn", use_container_width=True):
+                loaded = db.load_project(proj_options[chosen_proj_name])
+                if loaded:
+                    st.session_state["esc_project_name"] = loaded["name"]
+                    st.session_state["esc_base_date"] = date.fromisoformat(loaded["base_date"])
+                    st.session_state["project"] = pd.DataFrame(
+                        [
+                            {
+                                "Line Item": r["line_item"],
+                                "Cost ($)": float(r["cost"]),
+                                "Cost Type": r["cost_type"],
+                            }
+                            for r in loaded["line_items"]
+                        ]
+                    )
+                    st.session_state["esc_loaded_db_id"] = proj_options[chosen_proj_name]
+                    st.rerun()
+        if st.sidebar.button("Delete selected", key="esc_del_proj_btn", use_container_width=True):
+            if chosen_proj_name != "— select —":
+                db.delete_project(proj_options[chosen_proj_name])
+                if st.session_state.get("esc_loaded_db_id") == proj_options.get(chosen_proj_name):
+                    st.session_state.pop("esc_loaded_db_id", None)
+                st.rerun()
+    else:
+        st.sidebar.caption("No saved projects yet. Save the current project below.")
 
 
 # ── Shared project state ──────────────────────────────────────────────────────
@@ -103,10 +144,33 @@ project_df = st.data_editor(
 )
 st.session_state["project"] = project_df
 
-reset_col, _ = st.columns([1, 5])
-if reset_col.button("Reset to sample"):
+action_c1, action_c2, _ = st.columns([1, 1, 4])
+if action_c1.button("Reset to sample"):
     st.session_state["project"] = SAMPLE_PROJECT.copy()
+    st.session_state.pop("esc_loaded_db_id", None)
     st.rerun()
+
+if _db_ready:
+    if action_c2.button("☁ Save to DB", help="Persist this project to Supabase"):
+        valid_rows = project_df.dropna(subset=["Line Item", "Cost ($)"])
+        line_items = [
+            {
+                "line_item": r["Line Item"],
+                "cost": float(r["Cost ($)"]) if r["Cost ($)"] is not None else 0.0,
+                "cost_type": r["Cost Type"] if r["Cost Type"] in ("Labor", "Materials", "Equipment", "Other") else "Other",
+            }
+            for _, r in valid_rows.iterrows()
+        ]
+        db_id = db.save_project(
+            name=project_name or "Unnamed Project",
+            base_date=base_date.isoformat(),
+            line_items=line_items,
+        )
+        if db_id:
+            st.session_state["esc_loaded_db_id"] = db_id
+            st.success(f'Project "{project_name}" saved to database.')
+        else:
+            st.error("DB save failed — check connection.")
 
 if project_df.empty or project_df["Cost ($)"].fillna(0).sum() == 0:
     st.info("Add at least one line item with a cost to see escalation results.")

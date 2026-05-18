@@ -4,3 +4,4 @@ fredapi
 plotly
 python-dotenv
 python-dateutil
+psycopg2-binary
