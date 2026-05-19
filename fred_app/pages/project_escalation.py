@@ -64,21 +64,34 @@ st.sidebar.caption(
     "the project cost breakdown is shared between tabs."
 )
 
-# ── DB: load saved project from sidebar ──────────────────────────────────────
+
+# ── Shared project state ──────────────────────────────────────────────────────
+
+if "project" not in st.session_state:
+    st.session_state["project"] = SAMPLE_PROJECT.copy()
+if "esc_project_name" not in st.session_state:
+    st.session_state["esc_project_name"] = "Sample Project"
+if "esc_base_date" not in st.session_state:
+    st.session_state["esc_base_date"] = date.today() - relativedelta(years=5)
+
+
+# ── Project inputs (rendered once, shared by both tabs) ───────────────────────
+
+st.markdown("### Project")
+
+# DB project picker — shown inline above name/date so it reads as "open or create"
 if _db_ready:
-    st.sidebar.divider()
-    st.sidebar.header("Saved Projects")
     saved_projs = db.list_projects()
     if saved_projs:
         proj_options = {p["name"]: p["db_id"] for p in saved_projs}
-        chosen_proj_name = st.sidebar.selectbox(
-            "Load a project",
-            options=["— select —"] + list(proj_options.keys()),
+        pk_col, load_col, del_col = st.columns([4, 1, 1])
+        chosen_proj_name = pk_col.selectbox(
+            "Open saved project",
+            options=["— new project —"] + list(proj_options.keys()),
             key="esc_load_proj_select",
         )
-        if chosen_proj_name != "— select —":
-            lb, db_btn = st.sidebar.columns(2)
-            if lb.button("Load", key="esc_load_proj_btn", use_container_width=True):
+        if chosen_proj_name != "— new project —":
+            if load_col.button("Open", key="esc_load_proj_btn", use_container_width=True):
                 loaded = db.load_project(proj_options[chosen_proj_name])
                 if loaded:
                     st.session_state["esc_project_name"] = loaded["name"]
@@ -95,28 +108,12 @@ if _db_ready:
                     )
                     st.session_state["esc_loaded_db_id"] = proj_options[chosen_proj_name]
                     st.rerun()
-            if db_btn.button("Delete", key="esc_del_proj_btn", use_container_width=True):
+            if del_col.button("Delete", key="esc_del_proj_btn", use_container_width=True):
                 db.delete_project(proj_options[chosen_proj_name])
                 if st.session_state.get("esc_loaded_db_id") == proj_options[chosen_proj_name]:
                     st.session_state.pop("esc_loaded_db_id", None)
                 st.rerun()
-    else:
-        st.sidebar.caption("No saved projects yet. Save the current project below.")
 
-
-# ── Shared project state ──────────────────────────────────────────────────────
-
-if "project" not in st.session_state:
-    st.session_state["project"] = SAMPLE_PROJECT.copy()
-if "esc_project_name" not in st.session_state:
-    st.session_state["esc_project_name"] = "Sample Project"
-if "esc_base_date" not in st.session_state:
-    st.session_state["esc_base_date"] = date.today() - relativedelta(years=5)
-
-
-# ── Project inputs (rendered once, shared by both tabs) ───────────────────────
-
-st.markdown("### Project")
 c1, c2 = st.columns([2, 1])
 project_name = c1.text_input("Project name", key="esc_project_name")
 base_date = c2.date_input(
