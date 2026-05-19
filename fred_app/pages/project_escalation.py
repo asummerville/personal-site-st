@@ -330,91 +330,88 @@ with tab_single:
 
     if idx_df is None or idx_df.empty:
         st.error("Selected index returned no data.")
-        st.stop()
+    else:
+        base_row = snap_to_date(idx_df, base_date)
+        if base_row is None:
+            st.error(
+                f"No data for **{AVAILABLE_SERIES[chosen_sid].title}** on or before {base_date}. "
+                "Pick a more recent base date or choose a different index."
+            )
+        else:
+            curr_row = idx_df.iloc[-1]
+            factor = render_factor_callout(
+                chosen_sid,
+                base_row["date"].date(),
+                float(base_row["value"]),
+                float(curr_row["value"]),
+                curr_row["date"].date(),
+            )
 
-    base_row = snap_to_date(idx_df, base_date)
-    if base_row is None:
-        st.error(
-            f"No data for **{AVAILABLE_SERIES[chosen_sid].title}** on or before {base_date}. "
-            "Pick a more recent base date or choose a different index."
-        )
-        st.stop()
-    curr_row = idx_df.iloc[-1]
+            # Results table
+            work = project_df.copy()
+            work["Original Cost"] = work["Cost ($)"].fillna(0.0).astype(float)
+            work["Escalation Factor"] = factor
+            work["Escalated Cost"] = work["Original Cost"] * factor
+            work["Change ($)"] = work["Escalated Cost"] - work["Original Cost"]
+            work["Change (%)"] = (factor - 1.0) * 100.0
 
-    factor = render_factor_callout(
-        chosen_sid,
-        base_row["date"].date(),
-        float(base_row["value"]),
-        float(curr_row["value"]),
-        curr_row["date"].date(),
-    )
+            display = work[["Line Item", "Cost Type", "Original Cost", "Escalation Factor", "Escalated Cost", "Change ($)", "Change (%)"]].copy()
+            total_orig = display["Original Cost"].sum()
+            total_esc = display["Escalated Cost"].sum()
+            total_row = pd.DataFrame([{
+                "Line Item": "TOTAL",
+                "Cost Type": "",
+                "Original Cost": total_orig,
+                "Escalation Factor": factor,
+                "Escalated Cost": total_esc,
+                "Change ($)": total_esc - total_orig,
+                "Change (%)": (factor - 1.0) * 100.0,
+            }])
+            display = pd.concat([display, total_row], ignore_index=True)
 
-    # Results table
-    work = project_df.copy()
-    work["Original Cost"] = work["Cost ($)"].fillna(0.0).astype(float)
-    work["Escalation Factor"] = factor
-    work["Escalated Cost"] = work["Original Cost"] * factor
-    work["Change ($)"] = work["Escalated Cost"] - work["Original Cost"]
-    work["Change (%)"] = (factor - 1.0) * 100.0
+            st.markdown("### Results")
+            st.dataframe(
+                display,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Original Cost": st.column_config.NumberColumn(format="$%.2f"),
+                    "Escalation Factor": st.column_config.NumberColumn(format="%.4f"),
+                    "Escalated Cost": st.column_config.NumberColumn(format="$%.2f"),
+                    "Change ($)": st.column_config.NumberColumn(format="$%.2f"),
+                    "Change (%)": st.column_config.NumberColumn(format="%.2f%%"),
+                },
+            )
 
-    display = work[["Line Item", "Cost Type", "Original Cost", "Escalation Factor", "Escalated Cost", "Change ($)", "Change (%)"]].copy()
-    total_orig = display["Original Cost"].sum()
-    total_esc = display["Escalated Cost"].sum()
-    total_row = pd.DataFrame([{
-        "Line Item": "TOTAL",
-        "Cost Type": "",
-        "Original Cost": total_orig,
-        "Escalation Factor": factor,
-        "Escalated Cost": total_esc,
-        "Change ($)": total_esc - total_orig,
-        "Change (%)": (factor - 1.0) * 100.0,
-    }])
-    display = pd.concat([display, total_row], ignore_index=True)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Original Total", f"${total_orig:,.2f}")
+            m2.metric("Escalated Total", f"${total_esc:,.2f}")
+            m3.metric("Change", f"${total_esc - total_orig:,.2f}", f"{(factor - 1.0) * 100:+.2f}%")
 
-    st.markdown("### Results")
-    st.dataframe(
-        display,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Original Cost": st.column_config.NumberColumn(format="$%.2f"),
-            "Escalation Factor": st.column_config.NumberColumn(format="%.4f"),
-            "Escalated Cost": st.column_config.NumberColumn(format="$%.2f"),
-            "Change ($)": st.column_config.NumberColumn(format="$%.2f"),
-            "Change (%)": st.column_config.NumberColumn(format="%.2f%%"),
-        },
-    )
+            # Optional pie + reference chart
+            show_pie = st.checkbox("Show cost-type breakdown (pie)", value=False, key="f8_pie")
+            if show_pie:
+                by_type = work.groupby("Cost Type", as_index=False)["Escalated Cost"].sum()
+                pie = go.Figure(go.Pie(labels=by_type["Cost Type"], values=by_type["Escalated Cost"], hole=0.4))
+                pie.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0))
+                st.plotly_chart(pie, use_container_width=True, key="f8_pie_chart")
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Original Total", f"${total_orig:,.2f}")
-    m2.metric("Escalated Total", f"${total_esc:,.2f}")
-    m3.metric("Change", f"${total_esc - total_orig:,.2f}", f"{(factor - 1.0) * 100:+.2f}%")
+            st.markdown("**Index over the escalation period**")
+            render_index_ref_chart(chosen_sid, idx_df, base_row["date"].date(), key="f8_ref")
 
-    # Optional pie + reference chart
-    show_pie = st.checkbox("Show cost-type breakdown (pie)", value=False, key="f8_pie")
-    if show_pie:
-        by_type = work.groupby("Cost Type", as_index=False)["Escalated Cost"].sum()
-        pie = go.Figure(go.Pie(labels=by_type["Cost Type"], values=by_type["Escalated Cost"], hole=0.4))
-        pie.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(pie, use_container_width=True, key="f8_pie_chart")
+            csv = display.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download report (CSV)",
+                data=csv,
+                file_name=f"escalation_{project_name.replace(' ', '_')}_{base_date}.csv",
+                mime="text/csv",
+                key="f8_dl",
+            )
 
-    st.markdown("**Index over the escalation period**")
-    render_index_ref_chart(chosen_sid, idx_df, base_row["date"].date(), key="f8_ref")
-
-    # Download
-    csv = display.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download report (CSV)",
-        data=csv,
-        file_name=f"escalation_{project_name.replace(' ', '_')}_{base_date}.csv",
-        mime="text/csv",
-        key="f8_dl",
-    )
-
-    st.caption(
-        "ℹ︎ Escalation based on national-average indices. Regional cost differences are not applied. "
-        "Use Location Normalization (v2) for region-specific adjustments."
-    )
+            st.caption(
+                "ℹ︎ Escalation based on national-average indices. Regional cost differences are not applied. "
+                "Use Location Normalization (v2) for region-specific adjustments."
+            )
 
 
 # ============ F9 — Custom Index ============
@@ -438,68 +435,67 @@ with tab_custom:
                 "No saved custom indices yet. Build one in **Analyze → Custom Index Builder** "
                 "and save it, then return here. (Per-type assignment is also available below.)"
             )
-            st.stop()
-        chosen_name = st.selectbox(
-            "Saved index",
-            options=list(saved_indices.keys()),
-            key="f9_saved_name",
-        )
-        cfg = saved_indices[chosen_name]
-        comp_base_date = date.fromisoformat(cfg["base_date"])
-
-        # Pull all component series, then rebuild composite using the index's own base date.
-        all_sids = tuple(cfg["weights"].keys())
-        comp_store = load_series(all_sids, date(1900, 1, 1), date.today())
-        composite_df = _build_composite_df(cfg["weights"], comp_base_date, comp_store)
-        if composite_df is None:
-            st.error("Could not rebuild the composite (component data unavailable).")
-            st.stop()
-
-        comp_base_row = snap_to_date(composite_df, base_date)
-        if comp_base_row is None:
-            st.error(
-                f"Composite has no value on or before {base_date}. "
-                f"Composite starts {composite_df['date'].min().date()}."
+        else:
+            chosen_name = st.selectbox(
+                "Saved index",
+                options=list(saved_indices.keys()),
+                key="f9_saved_name",
             )
-            st.stop()
-        comp_curr_row = composite_df.iloc[-1]
-        factor = float(comp_curr_row["value"]) / float(comp_base_row["value"])
+            cfg = saved_indices[chosen_name]
+            comp_base_date = date.fromisoformat(cfg["base_date"])
 
-        years = max((comp_curr_row["date"].date() - comp_base_row["date"].date()).days / 365.25, 0.0)
-        c = cagr(float(comp_base_row["value"]), float(comp_curr_row["value"]), years) if years >= 1.0 else None
-        cagr_label = f", CAGR: {c * 100:.2f}%" if c is not None else ""
-        st.success(
-            f"Composite **{chosen_name}** on {comp_base_row['date'].date()}: **{comp_base_row['value']:.4f}** → "
-            f"on {comp_curr_row['date'].date()}: **{comp_curr_row['value']:.4f}**  \n"
-            f"Factor: **{factor:.4f}×** ({(factor - 1.0) * 100:+.2f}% over {years:.1f} years{cagr_label})"
-        )
+            # Pull all component series, then rebuild composite using the index's own base date.
+            all_sids = tuple(cfg["weights"].keys())
+            comp_store = load_series(all_sids, date(1900, 1, 1), date.today())
+            composite_df = _build_composite_df(cfg["weights"], comp_base_date, comp_store)
+            if composite_df is None:
+                st.error("Could not rebuild the composite (component data unavailable).")
+            else:
+                comp_base_row = snap_to_date(composite_df, base_date)
+                if comp_base_row is None:
+                    st.error(
+                        f"Composite has no value on or before {base_date}. "
+                        f"Composite starts {composite_df['date'].min().date()}."
+                    )
+                else:
+                    comp_curr_row = composite_df.iloc[-1]
+                    factor = float(comp_curr_row["value"]) / float(comp_base_row["value"])
 
-        work["Index Used"] = chosen_name
-        work["Escalation Factor"] = factor
-        work["Escalated Cost"] = work["Original Cost"] * factor
-        work["Change ($)"] = work["Escalated Cost"] - work["Original Cost"]
-        work["Change (%)"] = (factor - 1.0) * 100.0
+                    years = max((comp_curr_row["date"].date() - comp_base_row["date"].date()).days / 365.25, 0.0)
+                    c = cagr(float(comp_base_row["value"]), float(comp_curr_row["value"]), years) if years >= 1.0 else None
+                    cagr_label = f", CAGR: {c * 100:.2f}%" if c is not None else ""
+                    st.success(
+                        f"Composite **{chosen_name}** on {comp_base_row['date'].date()}: **{comp_base_row['value']:.4f}** → "
+                        f"on {comp_curr_row['date'].date()}: **{comp_curr_row['value']:.4f}**  \n"
+                        f"Factor: **{factor:.4f}×** ({(factor - 1.0) * 100:+.2f}% over {years:.1f} years{cagr_label})"
+                    )
 
-        # Reference chart for the composite
-        st.markdown("**Composite index over the escalation period**")
-        seg = composite_df[composite_df["date"] >= pd.Timestamp(base_date)]
-        if not seg.empty:
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=seg["date"], y=seg["value"], mode="lines",
-                line=dict(width=2.5, color="#ff4b4b"), name=chosen_name,
-            ))
-            base_ts = pd.Timestamp(comp_base_row["date"]).isoformat()
-            fig.add_shape(
-                type="line", x0=base_ts, x1=base_ts, y0=0, y1=1, yref="paper",
-                line=dict(dash="dash", color="#95a5a6", width=1),
-            )
-            fig.update_layout(
-                height=220, margin=dict(l=0, r=0, t=10, b=0),
-                showlegend=False, hovermode="x unified",
-                xaxis_title="", yaxis_title="Composite (Base = 100)",
-            )
-            st.plotly_chart(fig, use_container_width=True, key="f9_comp_ref")
+                    work["Index Used"] = chosen_name
+                    work["Escalation Factor"] = factor
+                    work["Escalated Cost"] = work["Original Cost"] * factor
+                    work["Change ($)"] = work["Escalated Cost"] - work["Original Cost"]
+                    work["Change (%)"] = (factor - 1.0) * 100.0
+
+                    # Reference chart for the composite
+                    st.markdown("**Composite index over the escalation period**")
+                    seg = composite_df[composite_df["date"] >= pd.Timestamp(base_date)]
+                    if not seg.empty:
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=seg["date"], y=seg["value"], mode="lines",
+                            line=dict(width=2.5, color="#ff4b4b"), name=chosen_name,
+                        ))
+                        base_ts = pd.Timestamp(comp_base_row["date"]).isoformat()
+                        fig.add_shape(
+                            type="line", x0=base_ts, x1=base_ts, y0=0, y1=1, yref="paper",
+                            line=dict(dash="dash", color="#95a5a6", width=1),
+                        )
+                        fig.update_layout(
+                            height=220, margin=dict(l=0, r=0, t=10, b=0),
+                            showlegend=False, hovermode="x unified",
+                            xaxis_title="", yaxis_title="Composite (Base = 100)",
+                        )
+                        st.plotly_chart(fig, use_container_width=True, key="f9_comp_ref")
 
     else:  # Per-cost-type mode
         if "f9_type_map" not in st.session_state:
@@ -588,80 +584,80 @@ with tab_custom:
         st.info(f"**Weighted average escalation:** {weighted_factor:.4f}× ({(weighted_factor - 1.0) * 100:+.2f}%)")
 
     # ── Common results table (both modes) ─────────────────────────────────────
-    display_c = work[[
-        "Line Item", "Cost Type", "Index Used", "Original Cost",
-        "Escalation Factor", "Escalated Cost", "Change ($)", "Change (%)"
-    ]].copy()
-    total_orig_c = display_c["Original Cost"].sum()
-    total_esc_c = display_c["Escalated Cost"].sum(skipna=True)
-    overall_factor = total_esc_c / total_orig_c if total_orig_c else float("nan")
-    total_row_c = pd.DataFrame([{
-        "Line Item": "TOTAL",
-        "Cost Type": "",
-        "Index Used": "Weighted",
-        "Original Cost": total_orig_c,
-        "Escalation Factor": overall_factor,
-        "Escalated Cost": total_esc_c,
-        "Change ($)": total_esc_c - total_orig_c,
-        "Change (%)": (overall_factor - 1.0) * 100.0,
-    }])
-    display_c = pd.concat([display_c, total_row_c], ignore_index=True)
+    if "Escalation Factor" in work.columns:
+        display_c = work[[
+            "Line Item", "Cost Type", "Index Used", "Original Cost",
+            "Escalation Factor", "Escalated Cost", "Change ($)", "Change (%)"
+        ]].copy()
+        total_orig_c = display_c["Original Cost"].sum()
+        total_esc_c = display_c["Escalated Cost"].sum(skipna=True)
+        overall_factor = total_esc_c / total_orig_c if total_orig_c else float("nan")
+        total_row_c = pd.DataFrame([{
+            "Line Item": "TOTAL",
+            "Cost Type": "",
+            "Index Used": "Weighted",
+            "Original Cost": total_orig_c,
+            "Escalation Factor": overall_factor,
+            "Escalated Cost": total_esc_c,
+            "Change ($)": total_esc_c - total_orig_c,
+            "Change (%)": (overall_factor - 1.0) * 100.0,
+        }])
+        display_c = pd.concat([display_c, total_row_c], ignore_index=True)
 
-    st.markdown("### Results")
-    st.dataframe(
-        display_c,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Original Cost": st.column_config.NumberColumn(format="$%.2f"),
-            "Escalation Factor": st.column_config.NumberColumn(format="%.4f"),
-            "Escalated Cost": st.column_config.NumberColumn(format="$%.2f"),
-            "Change ($)": st.column_config.NumberColumn(format="$%.2f"),
-            "Change (%)": st.column_config.NumberColumn(format="%.2f%%"),
-        },
-    )
+        st.markdown("### Results")
+        st.dataframe(
+            display_c,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Original Cost": st.column_config.NumberColumn(format="$%.2f"),
+                "Escalation Factor": st.column_config.NumberColumn(format="%.4f"),
+                "Escalated Cost": st.column_config.NumberColumn(format="$%.2f"),
+                "Change ($)": st.column_config.NumberColumn(format="$%.2f"),
+                "Change (%)": st.column_config.NumberColumn(format="%.2f%%"),
+            },
+        )
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Original Total", f"${total_orig_c:,.2f}")
-    m2.metric("Escalated Total", f"${total_esc_c:,.2f}")
-    m3.metric("Change", f"${total_esc_c - total_orig_c:,.2f}", f"{(overall_factor - 1.0) * 100:+.2f}%")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Original Total", f"${total_orig_c:,.2f}")
+        m2.metric("Escalated Total", f"${total_esc_c:,.2f}")
+        m3.metric("Change", f"${total_esc_c - total_orig_c:,.2f}", f"{(overall_factor - 1.0) * 100:+.2f}%")
 
-    # ── Single vs Custom side-by-side comparison ──────────────────────────────
-    st.markdown("### Single Index vs. Custom Index")
-    compare_sid = st.selectbox(
-        "Compare against single index",
-        options=list(ELIGIBLE_SERIES.keys()),
-        index=list(ELIGIBLE_SERIES.keys()).index("WPU801") if "WPU801" in ELIGIBLE_SERIES else 0,
-        format_func=lambda s: AVAILABLE_SERIES[s].title,
-        key="f9_compare",
-    )
-    cmp_store = load_series((compare_sid,), date(1900, 1, 1), date.today())
-    cmp_df = cmp_store.get(compare_sid)
-    if cmp_df is not None and not cmp_df.empty:
-        br = snap_to_date(cmp_df, base_date)
-        if br is not None:
-            single_factor = float(cmp_df.iloc[-1]["value"]) / float(br["value"])
-            single_total = total_orig_c * single_factor
-            cc1, cc2, cc3 = st.columns(3)
-            cc1.metric(
-                f"Single ({AVAILABLE_SERIES[compare_sid].title.split(':')[0][:24]})",
-                f"${single_total:,.2f}",
-                f"{(single_factor - 1.0) * 100:+.2f}%",
-            )
-            cc2.metric("Custom (this tab)", f"${total_esc_c:,.2f}", f"{(overall_factor - 1.0) * 100:+.2f}%")
-            cc3.metric("Custom − Single", f"${total_esc_c - single_total:,.2f}")
-        else:
-            st.caption("Comparison unavailable: comparison index has no data at base date.")
+        # ── Single vs Custom side-by-side comparison ──────────────────────────
+        st.markdown("### Single Index vs. Custom Index")
+        compare_sid = st.selectbox(
+            "Compare against single index",
+            options=list(ELIGIBLE_SERIES.keys()),
+            index=list(ELIGIBLE_SERIES.keys()).index("WPU801") if "WPU801" in ELIGIBLE_SERIES else 0,
+            format_func=lambda s: AVAILABLE_SERIES[s].title,
+            key="f9_compare",
+        )
+        cmp_store = load_series((compare_sid,), date(1900, 1, 1), date.today())
+        cmp_df = cmp_store.get(compare_sid)
+        if cmp_df is not None and not cmp_df.empty:
+            br = snap_to_date(cmp_df, base_date)
+            if br is not None:
+                single_factor = float(cmp_df.iloc[-1]["value"]) / float(br["value"])
+                single_total = total_orig_c * single_factor
+                cc1, cc2, cc3 = st.columns(3)
+                cc1.metric(
+                    f"Single ({AVAILABLE_SERIES[compare_sid].title.split(':')[0][:24]})",
+                    f"${single_total:,.2f}",
+                    f"{(single_factor - 1.0) * 100:+.2f}%",
+                )
+                cc2.metric("Custom (this tab)", f"${total_esc_c:,.2f}", f"{(overall_factor - 1.0) * 100:+.2f}%")
+                cc3.metric("Custom − Single", f"${total_esc_c - single_total:,.2f}")
+            else:
+                st.caption("Comparison unavailable: comparison index has no data at base date.")
 
-    # Download
-    csv_c = display_c.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download report (CSV)",
-        data=csv_c,
-        file_name=f"escalation_custom_{project_name.replace(' ', '_')}_{base_date}.csv",
-        mime="text/csv",
-        key="f9_dl",
-    )
+        csv_c = display_c.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download report (CSV)",
+            data=csv_c,
+            file_name=f"escalation_custom_{project_name.replace(' ', '_')}_{base_date}.csv",
+            mime="text/csv",
+            key="f9_dl",
+        )
 
 
 # ============ Line Item tab ============
@@ -686,108 +682,106 @@ with tab_lineitem:
     unique_sids_li = tuple(work_li["_sid"].dropna().unique())
     if not unique_sids_li:
         st.info("No valid escalation indices assigned. Edit the Escalation Index column above.")
-        st.stop()
+    else:
+        store_li = load_series(unique_sids_li, date(1900, 1, 1), date.today())
 
-    store_li = load_series(unique_sids_li, date(1900, 1, 1), date.today())
+        # Compute factor per row — fetch each unique series once (cached), apply per-row.
+        escalation_factors: list[float] = []
+        for _, row in work_li.iterrows():
+            sid = row["_sid"]
+            if pd.isna(sid):
+                escalation_factors.append(float("nan"))
+                continue
+            df_idx = store_li.get(sid)
+            if df_idx is None or df_idx.empty:
+                escalation_factors.append(float("nan"))
+                continue
+            br = snap_to_date(df_idx, base_date)
+            if br is None:
+                escalation_factors.append(float("nan"))
+                continue
+            escalation_factors.append(float(df_idx.iloc[-1]["value"]) / float(br["value"]))
 
-    # Compute factor per row — fetch each unique series once (cached), apply per-row.
-    escalation_factors: list[float] = []
-    for _, row in work_li.iterrows():
-        sid = row["_sid"]
-        if pd.isna(sid):
-            escalation_factors.append(float("nan"))
-            continue
-        df_idx = store_li.get(sid)
-        if df_idx is None or df_idx.empty:
-            escalation_factors.append(float("nan"))
-            continue
-        br = snap_to_date(df_idx, base_date)
-        if br is None:
-            escalation_factors.append(float("nan"))
-            continue
-        escalation_factors.append(float(df_idx.iloc[-1]["value"]) / float(br["value"]))
+        work_li["Escalation Factor"] = escalation_factors
+        work_li["Escalated Cost"] = work_li["Original Cost"] * work_li["Escalation Factor"]
+        work_li["Change ($)"] = work_li["Escalated Cost"] - work_li["Original Cost"]
+        work_li["Change (%)"] = (work_li["Escalation Factor"] - 1.0) * 100.0
 
-    work_li["Escalation Factor"] = escalation_factors
-    work_li["Escalated Cost"] = work_li["Original Cost"] * work_li["Escalation Factor"]
-    work_li["Change ($)"] = work_li["Escalated Cost"] - work_li["Original Cost"]
-    work_li["Change (%)"] = (work_li["Escalation Factor"] - 1.0) * 100.0
+        # Results table
+        display_li = work_li[[
+            "Line Item", "Cost Type", "Escalation Index",
+            "Original Cost", "Escalation Factor", "Escalated Cost", "Change ($)", "Change (%)"
+        ]].copy()
 
-    # Results table
-    display_li = work_li[[
-        "Line Item", "Cost Type", "Escalation Index",
-        "Original Cost", "Escalation Factor", "Escalated Cost", "Change ($)", "Change (%)"
-    ]].copy()
+        total_orig_li = display_li["Original Cost"].sum()
+        total_esc_li  = display_li["Escalated Cost"].sum(skipna=True)
+        eff_factor_li = total_esc_li / total_orig_li if total_orig_li else float("nan")
 
-    total_orig_li = display_li["Original Cost"].sum()
-    total_esc_li  = display_li["Escalated Cost"].sum(skipna=True)
-    eff_factor_li = total_esc_li / total_orig_li if total_orig_li else float("nan")
+        total_row_li = pd.DataFrame([{
+            "Line Item": "TOTAL", "Cost Type": "", "Escalation Index": "Weighted",
+            "Original Cost": total_orig_li, "Escalation Factor": eff_factor_li,
+            "Escalated Cost": total_esc_li,
+            "Change ($)": total_esc_li - total_orig_li,
+            "Change (%)": (eff_factor_li - 1.0) * 100.0,
+        }])
+        display_li = pd.concat([display_li, total_row_li], ignore_index=True)
 
-    total_row_li = pd.DataFrame([{
-        "Line Item": "TOTAL", "Cost Type": "", "Escalation Index": "Weighted",
-        "Original Cost": total_orig_li, "Escalation Factor": eff_factor_li,
-        "Escalated Cost": total_esc_li,
-        "Change ($)": total_esc_li - total_orig_li,
-        "Change (%)": (eff_factor_li - 1.0) * 100.0,
-    }])
-    display_li = pd.concat([display_li, total_row_li], ignore_index=True)
-
-    st.markdown("### Results")
-    st.dataframe(
-        display_li,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Original Cost":     st.column_config.NumberColumn(format="$%.2f"),
-            "Escalation Factor": st.column_config.NumberColumn(format="%.4f"),
-            "Escalated Cost":    st.column_config.NumberColumn(format="$%.2f"),
-            "Change ($)":        st.column_config.NumberColumn(format="$%.2f"),
-            "Change (%)":        st.column_config.NumberColumn(format="%.2f%%"),
-        },
-    )
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Original Total",  f"${total_orig_li:,.2f}")
-    m2.metric("Escalated Total", f"${total_esc_li:,.2f}")
-    m3.metric("Change", f"${total_esc_li - total_orig_li:,.2f}", f"{(eff_factor_li - 1.0) * 100:+.2f}%")
-
-    # Escalation factor bar chart — one bar per line item, coloured by assigned index.
-    chart_data = work_li.dropna(subset=["Escalation Factor"])
-    if not chart_data.empty:
-        st.markdown("**Escalation factor by line item**")
-        unique_indices = chart_data["Escalation Index"].unique()
-        color_map = {title: color_for_series(TITLE_TO_SID.get(title, title)) for title in unique_indices}
-
-        fig_li = go.Figure()
-        for idx_title in unique_indices:
-            subset = chart_data[chart_data["Escalation Index"] == idx_title]
-            fig_li.add_trace(go.Bar(
-                x=subset["Line Item"],
-                y=subset["Escalation Factor"],
-                name=idx_title,
-                marker_color=color_map[idx_title],
-                text=[f"{f:.3f}x" for f in subset["Escalation Factor"]],
-                textposition="outside",
-            ))
-        fig_li.add_hline(y=1.0, line_dash="dash", line_color="#95a5a6", annotation_text="No change")
-        fig_li.update_layout(
-            barmode="group",
-            height=360,
-            margin=dict(l=0, r=0, t=10, b=0),
-            yaxis_title="Escalation Factor",
-            xaxis_title="",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        st.markdown("### Results")
+        st.dataframe(
+            display_li,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Original Cost":     st.column_config.NumberColumn(format="$%.2f"),
+                "Escalation Factor": st.column_config.NumberColumn(format="%.4f"),
+                "Escalated Cost":    st.column_config.NumberColumn(format="$%.2f"),
+                "Change ($)":        st.column_config.NumberColumn(format="$%.2f"),
+                "Change (%)":        st.column_config.NumberColumn(format="%.2f%%"),
+            },
         )
-        st.plotly_chart(fig_li, use_container_width=True, key="fli_bar")
 
-    # Download
-    csv_li = display_li.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download report (CSV)",
-        data=csv_li,
-        file_name=f"escalation_lineitem_{project_name.replace(' ', '_')}_{base_date}.csv",
-        mime="text/csv",
-        key="fli_dl",
-    )
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Original Total",  f"${total_orig_li:,.2f}")
+        m2.metric("Escalated Total", f"${total_esc_li:,.2f}")
+        m3.metric("Change", f"${total_esc_li - total_orig_li:,.2f}", f"{(eff_factor_li - 1.0) * 100:+.2f}%")
+
+        # Escalation factor bar chart — one bar per line item, coloured by assigned index.
+        chart_data = work_li.dropna(subset=["Escalation Factor"])
+        if not chart_data.empty:
+            st.markdown("**Escalation factor by line item**")
+            unique_indices = chart_data["Escalation Index"].unique()
+            color_map = {title: color_for_series(TITLE_TO_SID.get(title, title)) for title in unique_indices}
+
+            fig_li = go.Figure()
+            for idx_title in unique_indices:
+                subset = chart_data[chart_data["Escalation Index"] == idx_title]
+                fig_li.add_trace(go.Bar(
+                    x=subset["Line Item"],
+                    y=subset["Escalation Factor"],
+                    name=idx_title,
+                    marker_color=color_map[idx_title],
+                    text=[f"{f:.3f}x" for f in subset["Escalation Factor"]],
+                    textposition="outside",
+                ))
+            fig_li.add_hline(y=1.0, line_dash="dash", line_color="#95a5a6", annotation_text="No change")
+            fig_li.update_layout(
+                barmode="group",
+                height=360,
+                margin=dict(l=0, r=0, t=10, b=0),
+                yaxis_title="Escalation Factor",
+                xaxis_title="",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            )
+            st.plotly_chart(fig_li, use_container_width=True, key="fli_bar")
+
+        csv_li = display_li.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download report (CSV)",
+            data=csv_li,
+            file_name=f"escalation_lineitem_{project_name.replace(' ', '_')}_{base_date}.csv",
+            mime="text/csv",
+            key="fli_dl",
+        )
 
 
 # ── Methodology ───────────────────────────────────────────────────────────────
