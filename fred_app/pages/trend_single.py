@@ -193,19 +193,11 @@ with tab_blocks:
             lambda v: f"{v * 100:.2f}%" if pd.notna(v) else "Insufficient data"
         )
 
-    def _row_color(row):
-        if row.get("_insufficient", False) if "_insufficient" in row else False:
-            return ["color: #95a5a6"] * len(row)
-        return [""] * len(row)
-
-    # Build styled table with conditional color on Change/% Change column
-    def _format_value(v):
-        if pd.isna(v):
-            return "—"
-        return v
+    def _fmt(v):
+        return "—" if pd.isna(v) else f"{v:.4f}"
 
     styled = display.style.format(
-        {"Start Value": _format_value, "End Value": _format_value, "Change": _format_value},
+        {"Start Value": _fmt, "End Value": _fmt, "Change": _fmt},
         na_rep="—",
     )
 

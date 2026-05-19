@@ -180,6 +180,7 @@ action_c1, action_c2, _ = st.columns([1, 1, 4])
 if action_c1.button("Reset to sample"):
     st.session_state["project"] = SAMPLE_PROJECT.copy()
     st.session_state.pop("esc_loaded_db_id", None)
+    st.session_state.pop("project_editor_new", None)
     st.rerun()
 
 if _db_ready:

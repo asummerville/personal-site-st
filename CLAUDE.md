@@ -112,10 +112,15 @@ Both apps are deployed via Streamlit Cloud pointing at this repo. The `fred_app/
 
 | Key | Written by | Read by | Shape |
 |---|---|---|---|
-| `custom_indices` | F7 Custom Index Builder | F8/F9 Project Escalation | `dict[name, {name, weights: dict[sid, float], base_date: str, series_ids: list[str]}]` |
+| `custom_indices` | F7 Custom Index Builder | F8/F9 Project Escalation | `dict[name, {name, weights: dict[sid, float], base_date: str, series_ids: list[str], db_id?: int}]` |
 | `currency_adjustment` | F10 Currency Normalization | F8/F9 Project Escalation (future) | `{source_currency, source_amount, conversion_date: str, rate, usd_amount}` |
 | `date_start` / `date_end` | `render_global_sidebar()` | all pages | `date` |
-| `project` | F8/F9 Project Escalation | F8/F9 (shared across tabs) | `pd.DataFrame` with columns: Line Item, Cost ($), Cost Type |
+| `project` | F8/F9 Project Escalation | F8/F9 (shared across tabs) | `pd.DataFrame` with columns: Line Item, Cost ($), Cost Type, Escalation Index |
+| `esc_project_name` | F8/F9 Project Escalation | F8/F9 | `str` — project name text input key |
+| `esc_base_date` | F8/F9 Project Escalation | F8/F9 | `date` — base cost date input key |
+| `esc_loaded_db_id` | F8/F9 Project Escalation (on DB load/save) | F8/F9 | `int` — DB id of the currently loaded project; absent for new/unsaved |
+| `cib_db_loaded` | F7 Custom Index Builder | F7 | `bool` flag — DB indices already merged into session on this run |
+| `f9_type_map` | F9 Custom Index tab | F9 | `dict[cost_type, series_id]` — per-type index selections |
 
 ### Implemented pages
 
@@ -133,12 +138,15 @@ Both apps are deployed via Streamlit Cloud pointing at this repo. The `fred_app/
 
 ### Known Streamlit gotchas (learned in this project)
 
-- **Tabs share a single render pass** — Streamlit executes all `with tab_X:` blocks every run. Never use the same widget `key=` in more than one tab. Render shared widgets (e.g., project inputs) *above* `st.tabs()` and pass variables into each tab.
+- **Tabs share a single render pass** — Streamlit executes all `with tab_X:` blocks every run. **Never call `st.stop()` inside a `with tab_X:` block** — it halts the entire render pass and all subsequent tab content blocks never execute. Use `if/else` guards instead. `st.stop()` is only safe at the top level of a page (before `st.tabs()`).
 - **Widget key + value conflict** — When a widget uses `key=`, initialize the session state key first (`if "key" not in st.session_state: st.session_state["key"] = default`), then use `key=` only — do not also pass `value=`/`index=`.
+- **`st.data_editor` key must be dynamic when data changes** — If you load new data into `st.session_state["project"]` and call `st.rerun()`, the editor ignores it when the key is the same (it keeps its internal edit-delta state). Make the key include a discriminator (e.g., the loaded project's DB id) so a different project forces a fresh widget render. Also clear `st.session_state.pop(editor_key, None)` explicitly before the rerun to discard stale edit deltas.
+- **`st.toast` icon must be an emoji** — `icon="✓"` raises `StreamlitAPIException`. Use emoji characters like `icon="✅"`.
 - **Plotly chart key required** — Every `st.plotly_chart` call needs a unique `key=` argument (Streamlit 1.36+).
 - **`add_vline` crashes with `pd.Timestamp` axes in Plotly 6.x** — Use `add_shape(type="line", x0=ts, x1=ts, y0=0, y1=1, yref="paper")` + `add_annotation` instead.
 - **Dark mode** — Never use `color="#111"` or `color="#fff"` for chart lines. Use `#ff4b4b` (Streamlit accent) for bold/composite lines — visible in both themes.
 - **`applymap` removed in pandas 3.0** — Use `.map()` on Styler objects instead.
+- **`st.cache_resource` caches exceptions silently** — If a `@st.cache_resource` function calls `st.warning()` inside an `except` block and returns a default, subsequent calls return the cached default without re-running the warning. Don't rely on `st.warning` inside cached functions for ongoing error visibility.
 
 ### Currency series conventions (F10)
 
@@ -148,9 +156,24 @@ Both apps are deployed via Streamlit Cloud pointing at this repo. The `fred_app/
 
 To add a new currency: add an entry to `CURRENCIES` in that file and add the FRED series to `AVAILABLE_SERIES` in `store.py` with `series_type="currency"`, `frequency_periods=252` (daily), `yoy_applicable=False`, and document the direction in `notes`.
 
-### Project Escalation (F8/F9)
+### Project Escalation (F8/F9/Line Item)
 
-Project inputs (name, base date, cost breakdown) are rendered **above** `st.tabs()` to avoid `StreamlitDuplicateElementKey`. Both tabs read from the same `project_df`, `base_date`, `project_name` variables. Eligible escalators are `series_type ∈ {"index", "count"}` only — rate/diffusion/currency series are excluded.
+Project inputs (name, base date, cost breakdown) are rendered **above** `st.tabs()` to avoid `StreamlitDuplicateElementKey`. All three tabs read from the same `project_df`, `base_date`, `project_name` variables. Eligible escalators are `series_type ∈ {"index", "count"}` only — rate/diffusion/currency series are excluded.
+
+The cost table (`st.data_editor`) has four columns: Line Item, Cost ($), Cost Type, Escalation Index. The Escalation Index column is a `SelectboxColumn` storing FRED series titles (not IDs). A `TITLE_TO_SID` reverse-lookup dict maps titles → IDs at compute time. Auto-fill applies cost-type defaults to blank Escalation Index cells after each data_editor render.
+
+**data_editor key pattern** — The editor key is `f"project_editor_{st.session_state.get('esc_loaded_db_id', 'new')}"`. This forces a fresh widget render when a different project is loaded. The widget state for that key is explicitly cleared (`.pop()`) on both "Open" (load from DB) and after "Save/Update" to prevent stale edit deltas from shadowing freshly loaded DB values.
+
+**DB save/update pattern** — `db.save_project()` accepts an optional `project_id` kwarg. When `esc_loaded_db_id` is set, the save passes it for a direct `UPDATE WHERE id = %s` (bypasses name lookup, prevents duplicate rows on rename or whitespace mismatch).
+
+### DB layer (`fred_app/db.py`)
+
+Optional Supabase/PostgreSQL persistence. `CONNECTION_STRING` env var (Supabase transaction pooler URL). App degrades gracefully to session-state-only if absent.
+
+- `is_available()` — returns `bool(CONNECTION_STRING)`. Gate all DB calls behind this.
+- `ensure_schema()` — call once at top of any DB-using page. Runs `CREATE TABLE IF NOT EXISTS` + migrations via `@st.cache_resource` (once per process).
+- All CRUD functions catch exceptions and return empty/None on failure — never propagate to the page.
+- Tables: `custom_indices`, `projects`, `project_line_items` (with `escalation_index TEXT` column added via migration).
 
 ## Reference Documents
 
@@ -160,3 +183,4 @@ Project inputs (name, base date, cost breakdown) are rendered **above** `st.tabs
 - `docs/data-sources.md` — Tier 1–5 free public data sources; FRED series IDs for Sprint 2 materials sub-indices.
 - `docs/database-schema.md` — Supabase schema + RLS policies + migration plan (design complete; migration deferred).
 - `docs/ux-vision.md` — Persona, 5 design principles, navigation evolution horizons, anti-patterns.
+- `docs/backlog.md` — Code review findings: confirmed bugs (with file:line + fix) and improvement backlog (effort/value table). Updated 2026-05-19.

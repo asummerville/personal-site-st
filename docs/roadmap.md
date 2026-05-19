@@ -74,15 +74,36 @@ The 8-week plan below ships two or three meaningful improvements, not ten half-f
 
 ---
 
+## Shipped pre-sprint (before Week 1)
+
+The following features were built during the planning + POC sessions and are already live on Streamlit Cloud. They represent the baseline the 8-week roadmap builds on.
+
+**Supabase persistence (db.py)**
+- `custom_indices` and `projects` / `project_line_items` tables created and migrated automatically on first run.
+- Custom Index Builder saves/loads/deletes composite indices to DB; falls back to session-state-only when `CONNECTION_STRING` is absent.
+- Project Escalation saves/loads/deletes projects including all line items with their per-item escalation index.
+- Save uses PK-based UPDATE for existing projects (avoids duplicate rows on rename).
+- Data editor widget state is cleared on Open/Save to prevent stale edit deltas from shadowing DB data.
+
+**Per-line-item escalation (Line Item tab)**
+- Each row in the project cost table has an "Escalation Index" `SelectboxColumn` (any eligible FRED series).
+- Auto-fill: blank cells default to cost-type-appropriate indices on each render.
+- New "Line Item" tab on Project Escalation shows per-row factors, totals, metrics, and a bar chart coloured by assigned index.
+- Eliminates the need for the Custom Index → per-type mode for projects with heterogeneous steel/concrete/labor cost splits.
+
+**Saved project picker relocated**
+- Moved from sidebar to an inline picker above the project name/date inputs, matching the "open or create" mental model.
+
+---
+
 ## Cut from this window
 
 The following are documented in `feature-backlog.md` and explicitly deferred beyond Week 8:
 
-- **Supabase migration** — schema is ready in `database-schema.md`; execution waits until URL state (Sprint 1) is stable, because the migration path is: URL → anonymous session UUID → Supabase row.
 - **Monte Carlo escalation** — valuable, but the ETS confidence bands in Sprint 3 cover the "show uncertainty" use case for now.
 - **Regional CCI / F11** — needs a location factor dataset (no clean free source identified yet).
 - **AIA ABI lagged indicator** — free monthly CSV, but requires manual ingestion pipeline; park until Sprint 2 data infrastructure is in place.
-- **Multi-user / saved workspaces** — Supabase-dependent.
+- **Multi-user / saved workspaces** — Supabase already wired; deferred until there's a reason to need per-user isolation.
 
 ---
 
