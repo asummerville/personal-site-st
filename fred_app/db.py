@@ -90,6 +90,11 @@ def _init_schema() -> bool:
                     sort_order INT         DEFAULT 0
                 )
             """)
+            # Migration: add escalation_index to existing tables.
+            cur.execute("""
+                ALTER TABLE project_line_items
+                ADD COLUMN IF NOT EXISTS escalation_index TEXT
+            """)
         conn.commit()
         conn.close()
         return True
@@ -232,10 +237,12 @@ def save_project(
             for i, item in enumerate(line_items):
                 cur.execute(
                     """
-                    INSERT INTO project_line_items (project_id, line_item, cost, cost_type, sort_order)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO project_line_items
+                        (project_id, line_item, cost, cost_type, escalation_index, sort_order)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (project_id, item["line_item"], item["cost"], item["cost_type"], i),
+                    (project_id, item["line_item"], item["cost"], item["cost_type"],
+                     item.get("escalation_index"), i),
                 )
         return project_id
     except Exception as exc:
@@ -254,7 +261,8 @@ def load_project(project_id: int) -> dict | None:
             if not proj:
                 return None
             cur.execute(
-                "SELECT line_item, cost, cost_type FROM project_line_items "
+                "SELECT line_item, cost, cost_type, escalation_index "
+                "FROM project_line_items "
                 "WHERE project_id = %s ORDER BY sort_order",
                 (project_id,),
             )
