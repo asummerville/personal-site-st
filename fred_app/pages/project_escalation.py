@@ -207,7 +207,7 @@ if _db_ready:
         if db_id:
             st.session_state["esc_loaded_db_id"] = db_id
             verb = "updated" if _is_db_project else "saved"
-            st.toast(f'Project "{project_name}" {verb}.', icon="✓")
+            st.toast(f'Project "{project_name}" {verb}.', icon="✅")
             # Clear stale editor state so the re-render shows exactly what's in the DB.
             st.session_state.pop(f"project_editor_{db_id}", None)
             st.rerun()
