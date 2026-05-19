@@ -34,13 +34,25 @@ DEFAULT_TYPE_INDICES = {
     "Other": "WPU801",
 }
 
+# Lookups for per-line-item escalation index column.
+TITLE_TO_SID: dict[str, str] = {m.title: sid for sid, m in ELIGIBLE_SERIES.items()}
+ELIGIBLE_TITLES: list[str] = sorted(TITLE_TO_SID)
+DEFAULT_TYPE_TITLES: dict[str, str] = {
+    ct: ELIGIBLE_SERIES[sid].title for ct, sid in DEFAULT_TYPE_INDICES.items()
+}
+
 SAMPLE_PROJECT = pd.DataFrame(
     [
-        {"Line Item": "Site Prep & Foundation", "Cost ($)": 250_000.0, "Cost Type": "Materials"},
-        {"Line Item": "Structural Steel", "Cost ($)": 480_000.0, "Cost Type": "Materials"},
-        {"Line Item": "Skilled Labor", "Cost ($)": 620_000.0, "Cost Type": "Labor"},
-        {"Line Item": "Crane & Equipment Rental", "Cost ($)": 145_000.0, "Cost Type": "Equipment"},
-        {"Line Item": "Permits & Insurance", "Cost ($)": 55_000.0, "Cost Type": "Other"},
+        {"Line Item": "Site Prep & Foundation",  "Cost ($)": 250_000.0, "Cost Type": "Materials",
+         "Escalation Index": ELIGIBLE_SERIES["WPUSI012011"].title},
+        {"Line Item": "Structural Steel",         "Cost ($)": 480_000.0, "Cost Type": "Materials",
+         "Escalation Index": ELIGIBLE_SERIES["WPU1017"].title},
+        {"Line Item": "Skilled Labor",            "Cost ($)": 620_000.0, "Cost Type": "Labor",
+         "Escalation Index": ELIGIBLE_SERIES["CES2000000003"].title},
+        {"Line Item": "Crane & Equipment Rental", "Cost ($)": 145_000.0, "Cost Type": "Equipment",
+         "Escalation Index": ELIGIBLE_SERIES["WPU112"].title},
+        {"Line Item": "Permits & Insurance",      "Cost ($)":  55_000.0, "Cost Type": "Other",
+         "Escalation Index": ELIGIBLE_SERIES["WPU801"].title},
     ]
 )
 
@@ -102,6 +114,8 @@ if _db_ready:
                                 "Line Item": r["line_item"],
                                 "Cost ($)": float(r["cost"]),
                                 "Cost Type": r["cost_type"],
+                                "Escalation Index": r.get("escalation_index")
+                                    or DEFAULT_TYPE_TITLES.get(r["cost_type"], ELIGIBLE_SERIES["WPU801"].title),
                             }
                             for r in loaded["line_items"]
                         ]
@@ -138,9 +152,25 @@ project_df = st.data_editor(
         "Cost Type": st.column_config.SelectboxColumn(
             "Cost Type", options=COST_TYPES, required=True, default="Other"
         ),
+        "Escalation Index": st.column_config.SelectboxColumn(
+            "Escalation Index",
+            options=ELIGIBLE_TITLES,
+            help="FRED series used to escalate this line item in the 'Line Item' tab.",
+        ),
     },
     key=_editor_key,
 )
+
+# Auto-fill any missing Escalation Index cells based on Cost Type default.
+if "Escalation Index" not in project_df.columns:
+    project_df["Escalation Index"] = project_df["Cost Type"].map(DEFAULT_TYPE_TITLES)
+else:
+    blank = project_df["Escalation Index"].isna()
+    if blank.any():
+        project_df.loc[blank, "Escalation Index"] = (
+            project_df.loc[blank, "Cost Type"].map(DEFAULT_TYPE_TITLES)
+        )
+
 st.session_state["project"] = project_df
 
 action_c1, action_c2, _ = st.columns([1, 1, 4])
@@ -158,7 +188,8 @@ if _db_ready:
             {
                 "line_item": r["Line Item"],
                 "cost": float(r["Cost ($)"]) if r["Cost ($)"] is not None else 0.0,
-                "cost_type": r["Cost Type"] if r["Cost Type"] in ("Labor", "Materials", "Equipment", "Other") else "Other",
+                "cost_type": r["Cost Type"] if r["Cost Type"] in COST_TYPES else "Other",
+                "escalation_index": r.get("Escalation Index") or DEFAULT_TYPE_TITLES.get(r.get("Cost Type", "Other"), ELIGIBLE_SERIES["WPU801"].title),
             }
             for _, r in valid_rows.iterrows()
         ]
@@ -277,7 +308,7 @@ def _build_composite_df(weights: dict[str, float], base_date: date, wide_store) 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 
-tab_single, tab_custom = st.tabs(["Single Index", "Custom Index"])
+tab_single, tab_custom, tab_lineitem = st.tabs(["Single Index", "Custom Index", "Line Item"])
 
 
 # ============ F8 — Single Index ============
@@ -630,6 +661,132 @@ with tab_custom:
         file_name=f"escalation_custom_{project_name.replace(' ', '_')}_{base_date}.csv",
         mime="text/csv",
         key="f9_dl",
+    )
+
+
+# ============ Line Item tab ============
+
+with tab_lineitem:
+    st.markdown("### Per-Line-Item Escalation")
+    st.caption(
+        "Each row uses the index assigned in the **Escalation Index** column above. "
+        "Change any row's index in the cost table to override the default."
+    )
+
+    work_li = project_df.copy()
+    work_li["Original Cost"] = work_li["Cost ($)"].fillna(0.0).astype(float)
+    work_li["_sid"] = work_li["Escalation Index"].map(TITLE_TO_SID)
+
+    unknown = work_li.loc[
+        work_li["_sid"].isna() & work_li["Escalation Index"].notna(), "Escalation Index"
+    ].unique()
+    for t in unknown:
+        st.warning(f"Unrecognised escalation index '{t}' — row will be skipped.")
+
+    unique_sids_li = tuple(work_li["_sid"].dropna().unique())
+    if not unique_sids_li:
+        st.info("No valid escalation indices assigned. Edit the Escalation Index column above.")
+        st.stop()
+
+    store_li = load_series(unique_sids_li, date(1900, 1, 1), date.today())
+
+    # Compute factor per row — fetch each unique series once (cached), apply per-row.
+    escalation_factors: list[float] = []
+    for _, row in work_li.iterrows():
+        sid = row["_sid"]
+        if pd.isna(sid):
+            escalation_factors.append(float("nan"))
+            continue
+        df_idx = store_li.get(sid)
+        if df_idx is None or df_idx.empty:
+            escalation_factors.append(float("nan"))
+            continue
+        br = snap_to_date(df_idx, base_date)
+        if br is None:
+            escalation_factors.append(float("nan"))
+            continue
+        escalation_factors.append(float(df_idx.iloc[-1]["value"]) / float(br["value"]))
+
+    work_li["Escalation Factor"] = escalation_factors
+    work_li["Escalated Cost"] = work_li["Original Cost"] * work_li["Escalation Factor"]
+    work_li["Change ($)"] = work_li["Escalated Cost"] - work_li["Original Cost"]
+    work_li["Change (%)"] = (work_li["Escalation Factor"] - 1.0) * 100.0
+
+    # Results table
+    display_li = work_li[[
+        "Line Item", "Cost Type", "Escalation Index",
+        "Original Cost", "Escalation Factor", "Escalated Cost", "Change ($)", "Change (%)"
+    ]].copy()
+
+    total_orig_li = display_li["Original Cost"].sum()
+    total_esc_li  = display_li["Escalated Cost"].sum(skipna=True)
+    eff_factor_li = total_esc_li / total_orig_li if total_orig_li else float("nan")
+
+    total_row_li = pd.DataFrame([{
+        "Line Item": "TOTAL", "Cost Type": "", "Escalation Index": "Weighted",
+        "Original Cost": total_orig_li, "Escalation Factor": eff_factor_li,
+        "Escalated Cost": total_esc_li,
+        "Change ($)": total_esc_li - total_orig_li,
+        "Change (%)": (eff_factor_li - 1.0) * 100.0,
+    }])
+    display_li = pd.concat([display_li, total_row_li], ignore_index=True)
+
+    st.markdown("### Results")
+    st.dataframe(
+        display_li,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Original Cost":     st.column_config.NumberColumn(format="$%.2f"),
+            "Escalation Factor": st.column_config.NumberColumn(format="%.4f"),
+            "Escalated Cost":    st.column_config.NumberColumn(format="$%.2f"),
+            "Change ($)":        st.column_config.NumberColumn(format="$%.2f"),
+            "Change (%)":        st.column_config.NumberColumn(format="%.2f%%"),
+        },
+    )
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Original Total",  f"${total_orig_li:,.2f}")
+    m2.metric("Escalated Total", f"${total_esc_li:,.2f}")
+    m3.metric("Change", f"${total_esc_li - total_orig_li:,.2f}", f"{(eff_factor_li - 1.0) * 100:+.2f}%")
+
+    # Escalation factor bar chart — one bar per line item, coloured by assigned index.
+    chart_data = work_li.dropna(subset=["Escalation Factor"])
+    if not chart_data.empty:
+        st.markdown("**Escalation factor by line item**")
+        unique_indices = chart_data["Escalation Index"].unique()
+        color_map = {title: color_for_series(TITLE_TO_SID.get(title, title)) for title in unique_indices}
+
+        fig_li = go.Figure()
+        for idx_title in unique_indices:
+            subset = chart_data[chart_data["Escalation Index"] == idx_title]
+            fig_li.add_trace(go.Bar(
+                x=subset["Line Item"],
+                y=subset["Escalation Factor"],
+                name=idx_title,
+                marker_color=color_map[idx_title],
+                text=[f"{f:.3f}x" for f in subset["Escalation Factor"]],
+                textposition="outside",
+            ))
+        fig_li.add_hline(y=1.0, line_dash="dash", line_color="#95a5a6", annotation_text="No change")
+        fig_li.update_layout(
+            barmode="group",
+            height=360,
+            margin=dict(l=0, r=0, t=10, b=0),
+            yaxis_title="Escalation Factor",
+            xaxis_title="",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        )
+        st.plotly_chart(fig_li, use_container_width=True, key="fli_bar")
+
+    # Download
+    csv_li = display_li.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download report (CSV)",
+        data=csv_li,
+        file_name=f"escalation_lineitem_{project_name.replace(' ', '_')}_{base_date}.csv",
+        mime="text/csv",
+        key="fli_dl",
     )
 
 
