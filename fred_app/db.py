@@ -212,26 +212,39 @@ def save_project(
     name: str,
     base_date: str,
     line_items: list[dict],       # each: {line_item, cost, cost_type}
+    project_id: int | None = None,
 ) -> int | None:
-    """Upsert a project and its line items. Returns the project id."""
+    """Upsert a project and its line items. Returns the project id.
+
+    When project_id is supplied the row is updated directly (no name lookup),
+    which avoids creating a duplicate when the user renames a loaded project.
+    """
     try:
         with _cursor() as cur:
-            # Check for existing project with this name.
-            cur.execute("SELECT id FROM projects WHERE name = %s", (name,))
-            existing = cur.fetchone()
-            if existing:
-                project_id = existing["id"]
+            if project_id is not None:
+                # Update by PK — most reliable path for existing projects.
                 cur.execute(
-                    "UPDATE projects SET base_date = %s::date, updated_at = NOW() WHERE id = %s",
-                    (base_date, project_id),
+                    "UPDATE projects SET name = %s, base_date = %s::date, updated_at = NOW() WHERE id = %s",
+                    (name, base_date, project_id),
                 )
                 cur.execute("DELETE FROM project_line_items WHERE project_id = %s", (project_id,))
             else:
-                cur.execute(
-                    "INSERT INTO projects (name, base_date) VALUES (%s, %s::date) RETURNING id",
-                    (name, base_date),
-                )
-                project_id = cur.fetchone()["id"]
+                # New project: check for a name collision first.
+                cur.execute("SELECT id FROM projects WHERE name = %s", (name,))
+                existing = cur.fetchone()
+                if existing:
+                    project_id = existing["id"]
+                    cur.execute(
+                        "UPDATE projects SET base_date = %s::date, updated_at = NOW() WHERE id = %s",
+                        (base_date, project_id),
+                    )
+                    cur.execute("DELETE FROM project_line_items WHERE project_id = %s", (project_id,))
+                else:
+                    cur.execute(
+                        "INSERT INTO projects (name, base_date) VALUES (%s, %s::date) RETURNING id",
+                        (name, base_date),
+                    )
+                    project_id = cur.fetchone()["id"]
 
             # Insert line items.
             for i, item in enumerate(line_items):

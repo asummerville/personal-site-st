@@ -121,6 +121,9 @@ if _db_ready:
                         ]
                     )
                     st.session_state["esc_loaded_db_id"] = proj_options[chosen_proj_name]
+                    # Clear any stale data_editor edits so the fresh DB data renders cleanly.
+                    new_key = f"project_editor_{proj_options[chosen_proj_name]}"
+                    st.session_state.pop(new_key, None)
                     st.rerun()
             if del_col.button("Delete", key="esc_del_proj_btn", use_container_width=True):
                 db.delete_project(proj_options[chosen_proj_name])
@@ -189,19 +192,25 @@ if _db_ready:
                 "line_item": r["Line Item"],
                 "cost": float(r["Cost ($)"]) if r["Cost ($)"] is not None else 0.0,
                 "cost_type": r["Cost Type"] if r["Cost Type"] in COST_TYPES else "Other",
-                "escalation_index": r.get("Escalation Index") or DEFAULT_TYPE_TITLES.get(r.get("Cost Type", "Other"), ELIGIBLE_SERIES["WPU801"].title),
+                "escalation_index": (r.get("Escalation Index") or
+                    DEFAULT_TYPE_TITLES.get(r.get("Cost Type", "Other"), ELIGIBLE_SERIES["WPU801"].title)),
             }
             for _, r in valid_rows.iterrows()
         ]
+        _existing_id = st.session_state.get("esc_loaded_db_id")
         db_id = db.save_project(
             name=project_name or "Unnamed Project",
             base_date=base_date.isoformat(),
             line_items=line_items,
+            project_id=_existing_id,
         )
         if db_id:
             st.session_state["esc_loaded_db_id"] = db_id
             verb = "updated" if _is_db_project else "saved"
-            st.success(f'Project "{project_name}" {verb} in database.')
+            st.toast(f'Project "{project_name}" {verb}.', icon="✓")
+            # Clear stale editor state so the re-render shows exactly what's in the DB.
+            st.session_state.pop(f"project_editor_{db_id}", None)
+            st.rerun()
         else:
             st.error("DB save failed — check connection.")
 
